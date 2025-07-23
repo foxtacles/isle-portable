@@ -122,5 +122,5 @@ inline static void OpenGLES2Renderer_EnumDevice(LPD3DENUMDEVICESCALLBACK cb, voi
 
 	D3DDEVICEDESC helDesc = {};
 
-	EnumDevice(cb, ctx, "OpenGL ES 2.0 HAL", &halDesc, &helDesc, OpenGLES2_GUID);
+	EnumDevice(cb, ctx, "OpenGL ES 3.0 HAL", &halDesc, &helDesc, OpenGLES2_GUID);
 }
