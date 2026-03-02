@@ -45,13 +45,13 @@ private:
 };
 
 #ifdef EXTENSIONS
-constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
-constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
-constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
+inline const auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
+inline const auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
+inline const auto CheckRejected = &MultiplayerExt::CheckRejected;
 #else
-constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
-constexpr decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
-constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
+inline const decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
+inline const decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
+inline const decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 #endif
 
 }; // namespace Extensions
