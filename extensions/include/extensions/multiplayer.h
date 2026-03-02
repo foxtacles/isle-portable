@@ -28,13 +28,13 @@ public:
 	static MxBool HandleEntityNotify(LegoEntity* p_entity);
 
 	static std::map<std::string, std::string> options;
-	LEGO1_EXPORT static bool enabled;
+	static bool enabled;
 
 	static std::string relayUrl;
 	static std::string room;
 
 	// Returns true if the multiplayer connection was rejected (e.g. room full).
-	LEGO1_EXPORT static MxBool CheckRejected();
+	static MxBool CheckRejected();
 
 	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
@@ -44,14 +44,16 @@ private:
 	static Multiplayer::NetworkTransport* s_transport;
 };
 
+LEGO1_EXPORT bool IsMultiplayerRejected();
+
 #ifdef EXTENSIONS
-inline const auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
-inline const auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
-inline const auto CheckRejected = &MultiplayerExt::CheckRejected;
+constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
+constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
+constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 #else
-inline const decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
-inline const decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
-inline const decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
+constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
+constexpr decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
+constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 #endif
 
 }; // namespace Extensions

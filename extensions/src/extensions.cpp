@@ -6,6 +6,11 @@
 
 #include <SDL3/SDL_log.h>
 
+bool Extensions::IsMultiplayerRejected()
+{
+	return Extension<MultiplayerExt>::Call(CheckRejected).value_or(FALSE);
+}
+
 void Extensions::Enable(const char* p_key, std::map<std::string, std::string> p_options)
 {
 	for (const char* key : availableExtensions) {
