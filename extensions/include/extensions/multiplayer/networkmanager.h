@@ -1,6 +1,7 @@
 #pragma once
 
 #include "extensions/multiplayer/networktransport.h"
+#include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
 #include "extensions/multiplayer/remoteplayer.h"
 #include "extensions/multiplayer/worldstatesync.h"
@@ -33,13 +34,17 @@ public:
 		return !strcmp(p_name, NetworkManager::ClassName()) || MxCore::IsA(p_name);
 	}
 
-	void Initialize(NetworkTransport* p_transport);
+	void Initialize(NetworkTransport* p_transport, PlatformCallbacks* p_callbacks);
 	void Shutdown();
 
 	void Connect(const char* p_roomId);
 	void Disconnect();
 	bool IsConnected() const;
 	bool WasRejected() const;
+
+	void SetWalkAnimation(uint8_t p_index);
+	void SetIdleAnimation(uint8_t p_index);
+	void SendEmote(uint8_t p_emoteId);
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -61,10 +66,12 @@ private:
 	void HandleLeave(const PlayerLeaveMsg& p_msg);
 	void HandleState(const PlayerStateMsg& p_msg);
 	void HandleHostAssign(const HostAssignMsg& p_msg);
+	void HandleEmote(const EmoteMsg& p_msg);
 
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();
 
+	void NotifyPlayerCountChanged();
 	int8_t DetectLocalVehicleType();
 
 	// Serialize and send a fixed-size message via the transport
@@ -72,6 +79,7 @@ private:
 	void SendMessage(const T& p_msg);
 
 	NetworkTransport* m_transport;
+	PlatformCallbacks* m_callbacks;
 	WorldStateSync m_worldSync;
 	std::map<uint32_t, std::unique_ptr<RemotePlayer>> m_remotePlayers;
 
@@ -80,6 +88,8 @@ private:
 	uint32_t m_sequence;
 	uint32_t m_lastBroadcastTime;
 	uint8_t m_lastValidActorId;
+	uint8_t m_localWalkAnimId;
+	uint8_t m_localIdleAnimId;
 	bool m_inIsleWorld;
 	bool m_registered;
 

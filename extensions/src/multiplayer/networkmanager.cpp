@@ -29,8 +29,9 @@ void NetworkManager::SendMessage(const T& p_msg)
 }
 
 NetworkManager::NetworkManager()
-	: m_transport(nullptr), m_localPeerId(0), m_hostPeerId(0), m_sequence(0), m_lastBroadcastTime(0),
-	  m_lastValidActorId(0), m_inIsleWorld(false), m_registered(false)
+	: m_transport(nullptr), m_callbacks(nullptr), m_localPeerId(0), m_hostPeerId(0), m_sequence(0),
+	  m_lastBroadcastTime(0), m_lastValidActorId(0), m_localWalkAnimId(0), m_localIdleAnimId(0), m_inIsleWorld(false),
+	  m_registered(false)
 {
 }
 
@@ -75,9 +76,10 @@ MxResult NetworkManager::Tickle()
 	return SUCCESS;
 }
 
-void NetworkManager::Initialize(NetworkTransport* p_transport)
+void NetworkManager::Initialize(NetworkTransport* p_transport, PlatformCallbacks* p_callbacks)
 {
 	m_transport = p_transport;
+	m_callbacks = p_callbacks;
 	m_worldSync.SetTransport(p_transport);
 }
 
@@ -145,6 +147,8 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 				}
 			}
 		}
+
+		NotifyPlayerCountChanged();
 	}
 }
 
@@ -160,6 +164,8 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		for (auto& [peerId, player] : m_remotePlayers) {
 			player->SetVisible(false);
 		}
+
+		NotifyPlayerCountChanged();
 	}
 }
 
@@ -212,6 +218,8 @@ void NetworkManager::BroadcastLocalState()
 	SDL_memcpy(msg.direction, dir, sizeof(msg.direction));
 	SDL_memcpy(msg.up, up, sizeof(msg.up));
 	msg.speed = speed;
+	msg.walkAnimId = m_localWalkAnimId;
+	msg.idleAnimId = m_localIdleAnimId;
 
 	SendMessage(msg);
 }
@@ -291,6 +299,13 @@ void NetworkManager::ProcessIncomingPackets()
 			}
 			break;
 		}
+		case MSG_EMOTE: {
+			EmoteMsg msg;
+			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_EMOTE) {
+				HandleEmote(msg);
+			}
+			break;
+		}
 		default:
 			break;
 		}
@@ -329,6 +344,7 @@ void NetworkManager::HandleJoin(const PlayerJoinMsg& p_msg)
 	}
 
 	CreateAndSpawnPlayer(peerId, p_msg.actorId);
+	NotifyPlayerCountChanged();
 }
 
 void NetworkManager::HandleLeave(const PlayerLeaveMsg& p_msg)
@@ -347,6 +363,7 @@ void NetworkManager::HandleState(const PlayerStateMsg& p_msg)
 		}
 
 		CreateAndSpawnPlayer(peerId, p_msg.actorId);
+		NotifyPlayerCountChanged();
 		it = m_remotePlayers.find(peerId);
 	}
 
@@ -358,11 +375,19 @@ void NetworkManager::HandleState(const PlayerStateMsg& p_msg)
 		it = m_remotePlayers.find(peerId);
 	}
 
+	int8_t oldWorldId = it->second->GetWorldId();
+
 	it->second->UpdateFromNetwork(p_msg);
 
 	bool bothInIsle = m_inIsleWorld && (p_msg.worldId == (int8_t) LegoOmni::e_act1);
 	if (it->second->IsSpawned()) {
 		it->second->SetVisible(bothInIsle);
+	}
+
+	bool wasInIsle = (oldWorldId == (int8_t) LegoOmni::e_act1);
+	bool nowInIsle = (p_msg.worldId == (int8_t) LegoOmni::e_act1);
+	if (m_inIsleWorld && wasInIsle != nowInIsle) {
+		NotifyPlayerCountChanged();
 	}
 }
 
@@ -378,12 +403,48 @@ void NetworkManager::HandleHostAssign(const HostAssignMsg& p_msg)
 	}
 }
 
+void NetworkManager::SetWalkAnimation(uint8_t p_index)
+{
+	if (p_index < g_walkAnimCount) {
+		m_localWalkAnimId = p_index;
+	}
+}
+
+void NetworkManager::SetIdleAnimation(uint8_t p_index)
+{
+	if (p_index < g_idleAnimCount) {
+		m_localIdleAnimId = p_index;
+	}
+}
+
+void NetworkManager::SendEmote(uint8_t p_emoteId)
+{
+	if (p_emoteId >= g_emoteAnimCount) {
+		return;
+	}
+
+	EmoteMsg msg{};
+	msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++};
+	msg.emoteId = p_emoteId;
+	SendMessage(msg);
+}
+
+void NetworkManager::HandleEmote(const EmoteMsg& p_msg)
+{
+	uint32_t peerId = p_msg.header.peerId;
+	auto it = m_remotePlayers.find(peerId);
+	if (it != m_remotePlayers.end()) {
+		it->second->TriggerEmote(p_msg.emoteId);
+	}
+}
+
 void NetworkManager::RemoveRemotePlayer(uint32_t p_peerId)
 {
 	auto it = m_remotePlayers.find(p_peerId);
 	if (it != m_remotePlayers.end()) {
 		it->second->Despawn();
 		m_remotePlayers.erase(it);
+		NotifyPlayerCountChanged();
 	}
 }
 
@@ -393,6 +454,26 @@ void NetworkManager::RemoveAllRemotePlayers()
 		player->Despawn();
 	}
 	m_remotePlayers.clear();
+	NotifyPlayerCountChanged();
+}
+
+void NetworkManager::NotifyPlayerCountChanged()
+{
+	if (!m_callbacks) {
+		return;
+	}
+
+	int count = -1;
+	if (m_inIsleWorld) {
+		count = 1; // local player
+		for (auto& [peerId, player] : m_remotePlayers) {
+			if (player->GetWorldId() == (int8_t) LegoOmni::e_act1) {
+				count++;
+			}
+		}
+	}
+
+	m_callbacks->OnPlayerCountChanged(count);
 }
 
 int8_t NetworkManager::DetectLocalVehicleType()
