@@ -44,9 +44,9 @@ private:
 	static Multiplayer::NetworkTransport* s_transport;
 };
 
+#ifdef EXTENSIONS
 LEGO1_EXPORT bool IsMultiplayerRejected();
 
-#ifdef EXTENSIONS
 constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
 constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;

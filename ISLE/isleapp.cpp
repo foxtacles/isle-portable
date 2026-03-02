@@ -1296,10 +1296,12 @@ inline bool IsleApp::Tick()
 		return true;
 	}
 
+#ifdef EXTENSIONS
 	if (Extensions::IsMultiplayerRejected()) {
 		g_closed = TRUE;
 		return true;
 	}
+#endif
 
 	if (!TickleManager()) {
 		return true;
