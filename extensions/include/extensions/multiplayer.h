@@ -28,13 +28,13 @@ public:
 	static MxBool HandleEntityNotify(LegoEntity* p_entity);
 
 	static std::map<std::string, std::string> options;
-	static bool enabled;
+	LEGO1_EXPORT static bool enabled;
 
 	static std::string relayUrl;
 	static std::string room;
 
 	// Returns true if the multiplayer connection was rejected (e.g. room full).
-	static MxBool CheckRejected();
+	LEGO1_EXPORT static MxBool CheckRejected();
 
 	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
