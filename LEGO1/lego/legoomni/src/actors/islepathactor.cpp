@@ -1,6 +1,7 @@
 #include "islepathactor.h"
 
 #include "3dmanager/lego3dmanager.h"
+#include "extensions/multiplayer.h"
 #include "isle_actions.h"
 #include "jukebox_actions.h"
 #include "legoanimationmanager.h"
@@ -15,6 +16,8 @@
 #include "mxnotificationparam.h"
 #include "scripts.h"
 #include "viewmanager/viewmanager.h"
+
+using namespace Extensions;
 
 DECOMP_SIZE_ASSERT(IslePathActor, 0x160)
 DECOMP_SIZE_ASSERT(IslePathActor::SpawnLocation, 0x38)
@@ -95,12 +98,16 @@ void IslePathActor::Enter()
 		TurnAround();
 		TransformPointOfView();
 	}
+
+	Extension<MultiplayerExt>::Call(HandleActorEnter, this);
 }
 
 // FUNCTION: LEGO1 0x1001a3f0
 // FUNCTION: BETA10 0x1003669f
 void IslePathActor::Exit()
 {
+	Extension<MultiplayerExt>::Call(HandleActorExit, this);
+
 	SetActorState(c_initial);
 	m_roi->SetVisibility(TRUE);
 

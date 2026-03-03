@@ -153,6 +153,25 @@ static const char* const g_emoteAnimNames[] = {
 };
 static const int g_emoteAnimCount = sizeof(g_emoteAnimNames) / sizeof(g_emoteAnimNames[0]);
 
+// Vehicle model names (LOD names). The helicopter is a compound ROI ("copter")
+// with no standalone LOD; use its body part instead.
+static const char* const g_vehicleROINames[VEHICLE_COUNT] =
+	{"chtrbody", "jsuser", "dunebugy", "bike", "board", "moto", "towtk", "ambul"};
+
+// Ride animation names for small vehicles (NULL = large vehicle, no ride anim)
+static const char* const g_rideAnimNames[VEHICLE_COUNT] =
+	{NULL, NULL, NULL, "CNs001Bd", "CNs001sk", "CNs011Ni", NULL, NULL};
+
+// Vehicle variant ROI names used in ride animations
+static const char* const g_rideVehicleROINames[VEHICLE_COUNT] =
+	{NULL, NULL, NULL, "bikebd", "board", "motoni", NULL, NULL};
+
+// Returns true if the vehicle type has no ride animation (model swap instead)
+inline bool IsLargeVehicle(int8_t p_vehicleType)
+{
+	return p_vehicleType != VEHICLE_NONE && p_vehicleType < VEHICLE_COUNT && g_rideAnimNames[p_vehicleType] == NULL;
+}
+
 // Validate actorId is a playable character (1-5, not brickster)
 inline bool IsValidActorId(uint8_t p_actorId)
 {

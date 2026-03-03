@@ -42,6 +42,8 @@ NetworkManager::~NetworkManager()
 
 MxResult NetworkManager::Tickle()
 {
+	m_thirdPersonCamera.Tick(0.016f);
+
 	if (!m_transport) {
 		return SUCCESS;
 	}
@@ -134,6 +136,8 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		m_registered = true;
 	}
 
+	m_thirdPersonCamera.OnWorldEnabled(p_world);
+
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
 		m_inIsleWorld = true;
 		m_worldSync.SetInIsleWorld(true);
@@ -157,6 +161,8 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 	if (!p_world) {
 		return;
 	}
+
+	m_thirdPersonCamera.OnWorldDisabled(p_world);
 
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
 		m_inIsleWorld = false;
@@ -407,6 +413,7 @@ void NetworkManager::SetWalkAnimation(uint8_t p_index)
 {
 	if (p_index < g_walkAnimCount) {
 		m_localWalkAnimId = p_index;
+		m_thirdPersonCamera.SetWalkAnimId(p_index);
 	}
 }
 
@@ -414,6 +421,7 @@ void NetworkManager::SetIdleAnimation(uint8_t p_index)
 {
 	if (p_index < g_idleAnimCount) {
 		m_localIdleAnimId = p_index;
+		m_thirdPersonCamera.SetIdleAnimId(p_index);
 	}
 }
 
@@ -422,6 +430,8 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 	if (p_emoteId >= g_emoteAnimCount) {
 		return;
 	}
+
+	m_thirdPersonCamera.TriggerEmote(p_emoteId);
 
 	EmoteMsg msg{};
 	msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++};

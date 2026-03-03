@@ -1,163 +1,159 @@
-# Plan: Reuse Multiplayer Animation System for Local Player Third-Person Camera
+# Updated Plan: Third-Person Camera with Animation Reuse
 
 ## Context
 
-LEGO Island's local player (`IslePathActor`) is hidden during gameplay — the camera sits at the entity's position (first-person) and the minifig model is invisible. The multiplayer extension already has a complete animation system for remote players: it builds ROI maps, looks up walk/idle animations, and applies bone transforms each frame via `LegoROI::ApplyAnimationTransformation()`. This plan evaluates reusing that system for the local player to enable a third-person camera as a feature of the multiplayer extension, with minimal changes to core game code.
+The original plan was written before the multiplayer animation system was extended to support multiple walk/idle animations, emotes, and vehicle ride animations. This updated plan accounts for those changes and replaces the original.
 
-**Activation model**: The third-person camera works independently of network connectivity — it's a local visual feature available whenever the multiplayer extension is enabled.
+The goal remains the same: reuse the multiplayer animation system for the local player to enable a third-person camera as a feature of the multiplayer extension, with minimal core game changes. The camera works independently of network connectivity.
 
-## Feasibility: YES
+## What Changed Since the Original Plan
 
-1. **The player ROI already exists** — just hidden via `SetVisibility(FALSE)`. No cloning needed.
-2. **Walk/idle animations are available** — `CNs001xx` (walk) and `CNs008xx` (idle) are loaded as presenters in the Isle world. The extension already looks these up.
-3. **`BuildROIMap` + `AssignROIIndices` are ROI-agnostic** — they take any `LegoROI*` and `LegoAnim*`, so they work on the local player's ROI identically.
-4. **Camera offset injection point exists** — `LegoCameraController::m_currentTransform` is multiplied into the camera matrix at `legocameracontroller.cpp:171`. Setting it to an offset matrix gives a third-person camera with zero changes to the camera pipeline. `SetWorldTransform()` is public and sets both `m_currentTransform` and `m_originalTransform`.
-5. **The extension already ticks every frame** — `NetworkManager::Tickle()` runs at 10ms intervals via `TickleManager`, regardless of connection state.
-6. **The `RotateZ` tilt effect composes correctly** — `LegoPathActor::Animate()` calls `RotateZ(angle)` during turning, which resets `m_currentTransform = m_originalTransform` then rotates. Since `SetWorldTransform` sets both fields, the tilt will compose with the third-person offset.
+- **AnimCache struct** added to RemotePlayer with move semantics and lazy caching via `GetOrBuildAnimCache()`
+- **6 walk animations**, **3 idle animations**, **2 emotes** defined in `protocol.h` with lookup tables
+- **NetworkManager** gained `SetWalkAnimation()`, `SetIdleAnimation()`, `SendEmote()` APIs with `m_localWalkAnimId`/`m_localIdleAnimId` tracking
+- **Emote one-shot playback** added to RemotePlayer (three-state: moving/emote/idle)
+- **Vehicle ride animations** for small vehicles, model swaps for large vehicles
+- **WASM exports** and **PlatformCallbacks** interface added
 
-## Architecture
+---
 
-### Extract shared animation utilities from RemotePlayer
+## Implementation Summary
 
-Move `AssignROIIndices()` (file-static, `remoteplayer.cpp:236`) and `BuildROIMap()` (member, `remoteplayer.cpp:278` — only uses parameters, no `this` state) into a shared utility. Both `RemotePlayer` and the new `ThirdPersonCamera` will call these.
+### Step 1: Extract AnimUtils
 
-### New `ThirdPersonCamera` class in the extension
+Moved `AnimCache`, `BuildROIMap`, and `AssignROIIndices` from `remoteplayer.cpp` into shared utilities.
 
-Manages camera offset, player visibility, and walk/idle animation playback for the local player. Composed into `NetworkManager` and driven from its `Tickle()`.
+- **Created `extensions/include/extensions/multiplayer/animutils.h`** — `AnimUtils::AnimCache` struct, `AnimUtils::BuildROIMap()`, `AnimUtils::GetOrBuildAnimCache()`
+- **Created `extensions/src/multiplayer/animutils.cpp`** — Moved `AssignROIIndices()` (file-static) and `BuildROIMap()` bodies
+- **Modified `remoteplayer.h`** — Replaced nested `AnimCache` with `using AnimCache = AnimUtils::AnimCache;`, removed `BuildROIMap` declaration
+- **Modified `remoteplayer.cpp`** — Removed extracted code, delegated to `AnimUtils`
 
-## Detailed Changes
+### Step 2: Move Vehicle Static Data to protocol.h
 
-### Extension-side (bulk of work)
+Moved from `remoteplayer.cpp` to `protocol.h` (alongside existing animation name tables):
+- `g_vehicleROINames[VEHICLE_COUNT]`
+- `g_rideAnimNames[VEHICLE_COUNT]`
+- `g_rideVehicleROINames[VEHICLE_COUNT]`
+- `IsLargeVehicle()` inline helper
 
-#### New files
+### Step 3: Create ThirdPersonCamera
 
-**`extensions/include/extensions/multiplayer/animutils.h`** + **`extensions/src/multiplayer/animutils.cpp`**
-- `Multiplayer::AnimUtils::BuildROIMap(LegoAnim*, LegoROI* root, LegoROI* extra, LegoROI**& map, MxU32& size)`
-- Contains the `AssignROIIndices` helper (moved from `remoteplayer.cpp`)
-
-**`extensions/include/extensions/multiplayer/thirdpersoncamera.h`** + **`extensions/src/multiplayer/thirdpersoncamera.cpp`**
-
-```cpp
-namespace Multiplayer {
-class ThirdPersonCamera {
-public:
-    void Enable(LegoWorld* world);  // Build ROI maps, set camera offset, show player
-    void Disable();                 // Restore first-person, hide player
-    bool IsEnabled() const;
-    void Toggle();                  // Runtime toggle (e.g., key binding)
-
-    // Called from extension hooks:
-    void OnActorEnter(IslePathActor* actor);   // After Enter() — undo TurnAround, show ROI, set camera
-    void OnActorExit(IslePathActor* actor);    // Before Exit() — teardown
-    void OnPostApplyTransform(LegoPathActor* actor); // After ApplyTransform — animate skeleton
-
-private:
-    bool m_enabled = false;
-    LegoROI* m_playerROI = nullptr;
-
-    // Animation state (same pattern as RemotePlayer)
-    LegoAnim* m_walkAnim;       LegoROI** m_walkRoiMap;  MxU32 m_walkRoiMapSize;
-    LegoAnim* m_idleAnim;       LegoROI** m_idleRoiMap;  MxU32 m_idleRoiMapSize;
-    float m_animTime, m_idleTime, m_idleAnimTime;
-    bool m_wasMoving;
-};
-}
-```
+- **Created `extensions/include/extensions/multiplayer/thirdpersoncamera.h`**
+- **Created `extensions/src/multiplayer/thirdpersoncamera.cpp`**
 
 Key behaviors:
+- **OnActorEnter**: If actor is UserActor and enabled: make player ROI visible, build walk/idle anim caches, set camera behind character via `SetWorldTransform(at=(0,2.5,3), dir=(0,-0.3,-1), up=(0,1,0))`. For vehicles, only set camera offset.
+- **Tick()**: Per-frame animation driven from `NetworkManager::Tickle()`. Three-state logic: moving → walk anim at 2x speed, emote → one-shot playback, idle → 2.5s delay then loop. Uses `fabsf(GetWorldSpeed())` for movement detection.
+- **OnActorExit**: Clear animation/vehicle state.
+- **SetWalkAnimId/SetIdleAnimId/TriggerEmote**: Same pattern as RemotePlayer.
 
-- **`OnActorEnter()`**: Fires after core `Enter()` completes. Undoes `TurnAround()` (calls it again — it's a self-inverse direction negate). Sets `m_roi->SetVisibility(TRUE)`. Overrides camera via `world->GetCameraController()->SetWorldTransform(offsetAt, offsetDir, offsetUp)` with behind+above offset. Rebuilds animation ROI maps. Re-calls `TransformPointOfView()`.
+### Step 4: Wire ThirdPersonCamera into NetworkManager
 
-- **`OnPostApplyTransform()`**: Fires after each frame's `ApplyTransform()`. Gets speed from `UserActor()->GetWorldSpeed()`. Applies walk or idle animation via `LegoROI::ApplyAnimationTransformation()` — identical logic to `RemotePlayer::UpdateAnimation()`.
+- Added `ThirdPersonCamera m_thirdPersonCamera` member
+- Added `ThirdPersonCamera& GetThirdPersonCamera()` accessor
+- Forward animation selection calls and world enable/disable events
+- `Tickle()` calls `m_thirdPersonCamera.Tick(0.016f)` before the transport guard so it runs without network
 
-- **`OnActorExit()`**: Tears down animator state. Core `Exit()` handles visibility/TurnAround restore.
+### Step 5: Add Extension Hooks and Core Game Hooks
 
-#### Modified extension files
+- Added `HandleActorEnter`, `HandleActorExit`, `HandlePostApplyTransform`, `ShouldInvertMovement` to `MultiplayerExt`
+- Added matching `constexpr auto` pointers in both `#ifdef EXTENSIONS` and `#else` blocks
+- Implemented hooks to forward to `ThirdPersonCamera`
+- Third-person camera enabled by default (toggled via WASM export, no INI config)
+- Modified `extensions.h` `Extension::Call` to handle both void and non-void return types via `if constexpr`
 
-**`extensions/src/multiplayer/remoteplayer.cpp`** — Remove `AssignROIIndices()` and `BuildROIMap()` bodies, call `AnimUtils::BuildROIMap()` instead.
+Core game hooks (all use `Extension<MultiplayerExt>::Call(...)` pattern):
+- `islepathactor.cpp` end of `Enter()`: `HandleActorEnter`
+- `islepathactor.cpp` start of `Exit()`: `HandleActorExit`
+- `legopathactor.cpp` end of `ApplyTransform()`: `HandlePostApplyTransform`
+- `legopathactor.cpp` in `CalculateTransform()`: `ShouldInvertMovement` — negates direction before `CalculateNewPosDir` and negates `newDir` after, fixing forward/backward movement inversion
 
-**`extensions/include/extensions/multiplayer/remoteplayer.h`** — Remove `BuildROIMap` declaration (now in AnimUtils).
+### Step 6: Movement Direction Fix (ShouldInvertMovement)
 
-**`extensions/src/multiplayer/networkmanager.cpp`** — Add `ThirdPersonCamera m_thirdPersonCamera` member. In `Tickle()`, check for toggle key via SDL. In `OnWorldEnabled()`/`OnWorldDisabled()`, enable/disable camera.
+After `Enter()`'s `TurnAround()`, the ROI direction is negated. This makes the mesh face the correct visual direction (mesh faces `-z` in local space), but the NavController drives movement along the ROI direction, so pressing "forward" moves the character backward.
 
-**`extensions/include/extensions/multiplayer.h`** — Add 3 new hook declarations:
-```cpp
-static void HandlePostApplyTransform(LegoPathActor* p_actor);
-static void HandleActorEnter(IslePathActor* p_actor);
-static void HandleActorExit(IslePathActor* p_actor);
-```
-Plus corresponding `constexpr auto` pointers following the existing pattern.
+The fix: `ShouldInvertMovement` returns TRUE when the third-person camera is active. In `CalculateTransform()`:
+1. **Before** `CalculateNewPosDir`: negate `dir` so movement goes in the visual forward direction
+2. **After** `CalculateNewPosDir`: negate `newDir` back so the ROI direction written by `ApplyTransform` remains in the TurnAround-negated form (preserving correct mesh facing)
 
-**`extensions/src/multiplayer.cpp`** — Read `multiplayer:third person camera` INI option. Wire hooks to `ThirdPersonCamera`.
+This avoids oscillation: every frame, the ROI direction stays negated (correct for visuals), while the movement position is computed using the un-negated direction (correct for controls).
 
-**`CMakeLists.txt`** — Add `animutils.cpp` and `thirdpersoncamera.cpp` to the extension sources.
+### Step 7: Add WASM Toggle Export
 
-### Core game changes (3 single-line hooks)
+- Added `mp_toggle_third_person()` export to `wasm_exports.cpp`
+- Added `animutils.cpp` and `thirdpersoncamera.cpp` to CMakeLists.txt
 
-All follow the existing `Extension<MultiplayerExt>::Call(...)` pattern.
+---
 
-**`LEGO1/lego/legoomni/src/actors/islepathactor.cpp`** — 2 hooks:
+## Known Issues (TODO)
 
-```cpp
-// At end of Enter() (after line 97):
-Extension<MultiplayerExt>::Call(HandleActorEnter, this);
+### 1. Initial spawn facing direction
+When spawning for the first time, the character faces the wrong way until the player starts moving. The initial ROI direction after `Enter()` + `TurnAround()` may not match the visual expectation. The `ShouldInvertMovement` hook only fires during `CalculateTransform` (keyboard-driven movement), so before the first movement frame the ROI direction is still in its post-TurnAround state. May need to apply an initial direction correction in `OnActorEnter` or force-apply the transform once.
 
-// At start of Exit() (before line 104):
-Extension<MultiplayerExt>::Call(HandleActorExit, this);
-```
+### 2. Vehicle enter/leave is broken
+When entering a vehicle (e.g. Skateboard):
+- The first-person HUD overlay is shown instead of being hidden
+- The character ROI is abandoned and remains static at the position where the character was left
+- The camera stays in third-person view but the vehicle interaction is broken
 
-**`LEGO1/lego/legoomni/src/paths/legopathactor.cpp`** — 1 hook:
+When leaving the vehicle:
+- Reverts to regular first-person camera instead of third-person
+- The abandoned character ROI remains visible and static at the vehicle exit position
 
-```cpp
-// At end of ApplyTransform() (after line 412):
-Extension<MultiplayerExt>::Call(HandlePostApplyTransform, this);
-```
+Root cause: `OnActorEnter`/`OnActorExit` fire for the vehicle actor too (since vehicles are also `IslePathActor` subclasses). The third-person camera needs to handle the transition between character and vehicle actors properly — hide/show the correct ROIs, manage ride animations for small vehicles, and re-enable third-person camera on vehicle exit.
 
-**Total core game diff: 3 lines added**, each a single `Extension::Call` invocation. No existing lines modified.
+### 3. "Hat Tip" emote distorts character mesh
+When playing the "Hat Tip" emote animation, at the end of the animation the character ROI gets visually distorted (smooshed/flattened). The deformation does not reset until the player starts moving. Likely cause: the final keyframe of the animation applies a non-uniform scale or collapsed transform to the bone ROIs, and the emote completion code (`m_emoteActive = false`) stops applying animation but doesn't reset the bone transforms to their idle/default poses.
+
+### 4. Building enter/return loses character ROI
+When entering a building (which triggers a world transition) and returning to the Isle world, the character ROI is gone completely. The `OnWorldDisabled`/`OnWorldEnabled` cycle clears the animation caches and resets state, but the ROI reference (`m_playerROI`) becomes stale. The `OnActorEnter` hook may not fire again after the world re-enable, or the ROI may need to be re-acquired and visibility re-set.
+
+---
+
+## Files Summary
+
+| File | Action |
+|------|--------|
+| `extensions/include/extensions/multiplayer/animutils.h` | CREATE |
+| `extensions/src/multiplayer/animutils.cpp` | CREATE |
+| `extensions/include/extensions/multiplayer/thirdpersoncamera.h` | CREATE |
+| `extensions/src/multiplayer/thirdpersoncamera.cpp` | CREATE |
+| `extensions/include/extensions/extensions.h` | MODIFY — void/non-void `if constexpr` in `Extension::Call` |
+| `extensions/include/extensions/multiplayer/remoteplayer.h` | MODIFY — use AnimUtils::AnimCache, remove BuildROIMap |
+| `extensions/src/multiplayer/remoteplayer.cpp` | MODIFY — remove extracted code, use AnimUtils |
+| `extensions/include/extensions/multiplayer/protocol.h` | MODIFY — add vehicle name arrays |
+| `extensions/include/extensions/multiplayer/networkmanager.h` | MODIFY — add ThirdPersonCamera member |
+| `extensions/src/multiplayer/networkmanager.cpp` | MODIFY — wire camera to animation APIs |
+| `extensions/include/extensions/multiplayer.h` | MODIFY — add hook declarations incl. ShouldInvertMovement |
+| `extensions/src/multiplayer.cpp` | MODIFY — implement hooks, enable camera by default |
+| `extensions/src/multiplayer/platforms/emscripten/wasm_exports.cpp` | MODIFY — add toggle export |
+| `CMakeLists.txt` | MODIFY — add new sources |
+| `LEGO1/lego/legoomni/src/actors/islepathactor.cpp` | MODIFY — +2 hook lines (Enter/Exit) |
+| `LEGO1/lego/legoomni/src/paths/legopathactor.cpp` | MODIFY — +1 hook line (ApplyTransform), +ShouldInvertMovement in CalculateTransform |
 
 ## Key Design Decisions
 
-### Why post-hooks instead of wrapping individual lines?
-The extension's `OnActorEnter()` undoes `TurnAround()` and restores visibility after `Enter()` completes. This is cleaner than wrapping `SetVisibility(FALSE)` and `direction *= -1.0f` with conditionals because: (a) fewer core code changes, (b) each core hook is a pure addition, (c) no rendering happens between Enter()'s hide and the extension's show (single function call).
+### Movement direction inversion via CalculateTransform hook
+Rather than modifying the ROI direction (which gets overwritten by the path system's spline evaluation and edge transitions) or trying to change NavController velocity mapping, the direction is inverted symmetrically around `CalculateNewPosDir`. This ensures: (a) no oscillation between frames, (b) the ROI direction stays consistent for visual facing and camera positioning, (c) the path boundary and spline systems are unaffected.
 
 ### Why not modify `IslePathActor`'s inheritance?
 Adding `LegoAnimActor` to `IslePathActor`'s class hierarchy would change vtable layout and class size (`DECOMP_SIZE_ASSERT(IslePathActor, 0x160)` would break). The multiplayer extension's approach of directly calling `ApplyAnimationTransformation()` avoids this entirely.
 
 ### ROI map index sharing
-`AssignROIIndices` modifies shared `LegoAnimNodeData::m_roiIndex` fields on the `LegoAnim` tree nodes. If both the local player and remote players call `BuildROIMap` on the same `LegoAnim*` (e.g., `CNs001xx`), the last caller's indices win. However, this is safe because all minifig characters share the same skeleton structure (body, head, larm, rarm, lleg, rleg), so `AssignROIIndices` produces identical index assignments regardless of which character's ROI is mapped. Each caller maintains its own `roiMap` array pointing to different ROI instances, but the indices into those arrays are consistent.
+`AssignROIIndices` modifies shared `LegoAnimNodeData::m_roiIndex` fields on the `LegoAnim` tree nodes. This is safe because all minifig characters share the same skeleton structure, so `AssignROIIndices` produces identical index assignments regardless of which character's ROI is mapped.
 
 ### Camera offset via `SetWorldTransform`
-Calling `SetWorldTransform(at=(0, 2.5, -3.0), dir=(0, -0.3, 1.0), up=(0, 1, 0))` sets both `m_currentTransform` and `m_originalTransform`. This persists across frames — the core's `TransformPointOfView()` already uses `m_currentTransform` in its multiplication, so no per-frame camera override is needed. The `RotateZ` tilt effect during turning composes correctly because it resets from `m_originalTransform`.
-
-### Vehicle transitions
-When entering a vehicle, its `Enter()` hook fires. The extension detects the actor type (e.g., `IsA("Helicopter")`). For vehicles, the walking animation is disabled but the third-person camera offset can optionally remain. For large vehicles that replace the player model entirely, the extension defers to the vehicle's own visibility management.
-
-## Files Summary
-
-| File | Action | Scope |
-|------|--------|-------|
-| `extensions/include/extensions/multiplayer/animutils.h` | CREATE | Shared ROI map building |
-| `extensions/src/multiplayer/animutils.cpp` | CREATE | Moved from remoteplayer.cpp |
-| `extensions/include/extensions/multiplayer/thirdpersoncamera.h` | CREATE | Camera + animation manager |
-| `extensions/src/multiplayer/thirdpersoncamera.cpp` | CREATE | Core implementation |
-| `extensions/src/multiplayer/remoteplayer.cpp` | MODIFY | Use AnimUtils |
-| `extensions/include/extensions/multiplayer/remoteplayer.h` | MODIFY | Remove BuildROIMap decl |
-| `extensions/src/multiplayer/networkmanager.cpp` | MODIFY | Tick camera, toggle key |
-| `extensions/include/extensions/multiplayer/networkmanager.h` | MODIFY | Add member |
-| `extensions/include/extensions/multiplayer.h` | MODIFY | Add 3 hook declarations |
-| `extensions/src/multiplayer.cpp` | MODIFY | Read config, wire hooks |
-| `CMakeLists.txt` | MODIFY | Add new sources |
-| `LEGO1/lego/legoomni/src/actors/islepathactor.cpp` | MODIFY | +2 lines (Enter/Exit hooks) |
-| `LEGO1/lego/legoomni/src/paths/legopathactor.cpp` | MODIFY | +1 line (ApplyTransform hook) |
+`SetWorldTransform(at=(0,2.5,3), dir=(0,-0.3,-1), up=(0,1,0))` sets both `m_currentTransform` and `m_originalTransform`. After TurnAround, +z in ROI-local space points behind the visual model, so at=(0,2.5,3) places the camera behind the character. The `RotateZ` tilt effect during turning composes correctly because it resets from `m_originalTransform`.
 
 ## Verification
 
 1. **Build**: `cmake --build build` — no compilation errors
 2. **Tests**: `ctest --test-dir build` — no regressions
-3. **Multiplayer remote players**: With multiplayer connected, verify remote player walk/idle animations still work after the AnimUtils refactor
-4. **Third-person on foot**: Enable via INI config. Walk around the island — player character visible from behind, walk animation plays when moving, idle animation plays after ~2.5s standing
-5. **Direction**: Character faces movement direction (not backward)
-6. **Camera**: Follows from behind and above, tilt during turns works
-7. **Vehicle enter/exit**: Enter a vehicle (e.g., bike), camera transitions. Exit vehicle, walk animation resumes
-8. **Toggle**: Switch between first/third person at runtime — first-person restores original behavior (hidden model, reversed direction)
-9. **Without network**: Verify camera works with multiplayer extension enabled but not connected to any room
+3. **Remote player animations**: With multiplayer connected, verify walk/idle/emote animations still work after the AnimUtils refactor
+4. **Third-person on foot**: Walk around — player visible from behind, selected walk animation plays, idle after 2.5s
+5. **Animation switching**: Change walk/idle animation via WASM exports — local player model updates
+6. **Emotes**: Trigger emote while stationary — plays on local model, interrupted by movement
+7. **Vehicle transitions**: Enter vehicle — camera offset active. Exit vehicle — walk animation resumes (**currently broken, see Known Issues #2**)
+8. **Toggle**: `mp_toggle_third_person` switches between first/third person — first-person restores original behavior
+9. **Without network**: Camera works with multiplayer extension enabled but not connected
+10. **Building transitions**: Enter/leave buildings without losing character ROI (**currently broken, see Known Issues #3**)
