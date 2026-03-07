@@ -2,6 +2,7 @@
 
 #include "extensions/multiplayer/animutils.h"
 #include "extensions/multiplayer/protocol.h"
+#include "mxgeometry/mxmatrix.h"
 #include "mxtypes.h"
 
 #include <cstdint>
@@ -50,6 +51,8 @@ private:
 	int8_t DetectVehicleType(LegoPathActor* p_actor);
 	void BuildRideAnimation(int8_t p_vehicleType);
 	void ClearRideAnimation();
+	void ApplyIdleFrame0();
+	void ReinitForCharacter();
 
 	bool m_enabled;
 	bool m_active;
@@ -70,6 +73,7 @@ private:
 	float m_emoteTime;
 	float m_emoteDuration;
 	bool m_emoteActive;
+	MxMatrix m_emoteParentTransform;
 
 	// Vehicle ride state
 	int8_t m_currentVehicleType;
