@@ -422,7 +422,6 @@ void LegoPathActor::ApplyTransform(Matrix4& p_transform)
 			TransformPointOfView();
 		}
 	}
-
 }
 
 // FUNCTION: LEGO1 0x1002e790
