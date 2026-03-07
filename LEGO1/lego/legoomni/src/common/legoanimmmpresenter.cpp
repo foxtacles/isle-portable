@@ -1,9 +1,9 @@
 #include "legoanimmmpresenter.h"
 
 #include "3dmanager/lego3dmanager.h"
-#include "extensions/multiplayer.h"
 #include "decomp.h"
 #include "define.h"
+#include "extensions/multiplayer.h"
 #include "islepathactor.h"
 #include "legoanimationmanager.h"
 #include "legoanimpresenter.h"
