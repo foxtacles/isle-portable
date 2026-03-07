@@ -654,6 +654,8 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 	// Only play effects here — do NOT modify the remote player's customize state.
 	// State changes come exclusively through UpdateFromNetwork (from the target's
 	// authoritative PlayerStateMsg), which prevents flip-flop from stale state messages.
+	// Note: sound/mood feedback uses the old state (before the authoritative update arrives),
+	// so the played sound may lag one step behind. This is an accepted tradeoff.
 	auto it = m_remotePlayers.find(targetPeerId);
 	if (it != m_remotePlayers.end()) {
 		if (it->second->GetROI()) {
@@ -673,6 +675,11 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 
 	// Check if the target is the local player
 	if (targetPeerId == m_localPeerId) {
+		// Reject remote customization if not allowed
+		if (p_msg.header.peerId != m_localPeerId && !m_localAllowRemoteCustomize) {
+			return;
+		}
+
 		// ApplyCustomizeChange handles null display ROI (advances state without visual)
 		m_thirdPersonCamera.ApplyCustomizeChange(p_msg.changeType, p_msg.partIndex);
 

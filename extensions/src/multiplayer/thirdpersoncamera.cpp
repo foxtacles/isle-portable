@@ -478,14 +478,14 @@ void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 	m_emoteParentTransform = m_playerROI->GetLocal2World();
 }
 
-void ThirdPersonCamera::ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex)
+void ThirdPersonCamera::ApplyCustomizeChange(uint8_t p_changeType, uint8_t p_partIndex)
 {
 	uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(
 		m_displayActorIndex,
 		GameState() ? GameState()->GetActorId() : 0
 	);
 
-	CharacterCustomizer::ApplyChange(m_displayROI, actorInfoIndex, m_customizeState, changeType, partIndex);
+	CharacterCustomizer::ApplyChange(m_displayROI, actorInfoIndex, m_customizeState, p_changeType, p_partIndex);
 }
 
 void ThirdPersonCamera::StopClickAnimation()

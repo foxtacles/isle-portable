@@ -45,7 +45,7 @@ public:
 	LegoROI* GetDisplayROI() const { return m_displayROI; }
 	CustomizeState& GetCustomizeState() { return m_customizeState; }
 
-	void ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex);
+	void ApplyCustomizeChange(uint8_t p_changeType, uint8_t p_partIndex);
 	void SetClickAnimObjectId(MxU32 p_clickAnimObjectId) { m_clickAnimObjectId = p_clickAnimObjectId; }
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_currentVehicleType != VEHICLE_NONE; }

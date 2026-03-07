@@ -70,6 +70,10 @@ bool CharacterCustomizer::SwitchColor(
 	int p_partIndex
 )
 {
+	if (p_partIndex < 0 || p_partIndex >= 10) {
+		return false;
+	}
+
 	// Remap derived parts to independent parts
 	if (p_partIndex == c_clawlftPart) {
 		p_partIndex = c_armlftPart;

@@ -30,7 +30,6 @@ void CustomizeState::InitFromActorInfo(uint8_t p_actorInfoIndex)
 	colorIndices[c_clawrtPart] = colorIndices[c_armrtPart];
 
 	hatVariantIndex = info.m_parts[c_infohatPart].m_partNameIndex;
-	bodyVariantIndex = info.m_parts[c_bodyPart].m_partNameIndex;
 	sound = (uint8_t) info.m_sound;
 	move = (uint8_t) info.m_move;
 	mood = info.m_mood;
@@ -38,8 +37,8 @@ void CustomizeState::InitFromActorInfo(uint8_t p_actorInfoIndex)
 
 void CustomizeState::Pack(uint8_t p_out[5]) const
 {
-	// byte 0: hatVariantIndex(5 bits) | bodyVariantIndex(3 bits)
-	p_out[0] = (hatVariantIndex & 0x1F) | ((bodyVariantIndex & 0x07) << 5);
+	// byte 0: hatVariantIndex(5 bits) | reserved(3 bits)
+	p_out[0] = (hatVariantIndex & 0x1F);
 
 	// byte 1: sound(4 bits) | move(2 bits) | mood(2 bits)
 	p_out[1] = (sound & 0x0F) | ((move & 0x03) << 4) | ((mood & 0x03) << 6);
@@ -56,9 +55,8 @@ void CustomizeState::Pack(uint8_t p_out[5]) const
 
 void CustomizeState::Unpack(const uint8_t p_in[5])
 {
-	// byte 0: hatVariantIndex(5 bits) | bodyVariantIndex(3 bits)
+	// byte 0: hatVariantIndex(5 bits) | reserved(3 bits)
 	hatVariantIndex = p_in[0] & 0x1F;
-	bodyVariantIndex = (p_in[0] >> 5) & 0x07;
 
 	// byte 1: sound(4 bits) | move(2 bits) | mood(2 bits)
 	sound = p_in[1] & 0x0F;
