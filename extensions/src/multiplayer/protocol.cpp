@@ -1,5 +1,7 @@
 #include "extensions/multiplayer/protocol.h"
 
+#include "legopathactor.h"
+
 #include <cstddef>
 
 namespace Multiplayer
@@ -44,6 +46,34 @@ const char* const g_rideVehicleROINames[VEHICLE_COUNT] =
 bool IsLargeVehicle(int8_t p_vehicleType)
 {
 	return p_vehicleType != VEHICLE_NONE && p_vehicleType < VEHICLE_COUNT && g_rideAnimNames[p_vehicleType] == NULL;
+}
+
+int8_t DetectVehicleType(LegoPathActor* p_actor)
+{
+	static const struct {
+		const char* className;
+		int8_t vehicleType;
+	} vehicleMap[] = {
+		{"Helicopter", VEHICLE_HELICOPTER},
+		{"Jetski", VEHICLE_JETSKI},
+		{"DuneBuggy", VEHICLE_DUNEBUGGY},
+		{"Bike", VEHICLE_BIKE},
+		{"SkateBoard", VEHICLE_SKATEBOARD},
+		{"Motorcycle", VEHICLE_MOTOCYCLE},
+		{"TowTrack", VEHICLE_TOWTRACK},
+		{"Ambulance", VEHICLE_AMBULANCE},
+	};
+
+	if (!p_actor) {
+		return VEHICLE_NONE;
+	}
+
+	for (const auto& entry : vehicleMap) {
+		if (p_actor->IsA(entry.className)) {
+			return entry.vehicleType;
+		}
+	}
+	return VEHICLE_NONE;
 }
 
 } // namespace Multiplayer

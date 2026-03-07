@@ -219,7 +219,7 @@ void NetworkManager::BroadcastLocalState()
 	msg.header = {MSG_STATE, m_localPeerId, m_sequence++};
 	msg.actorId = actorId;
 	msg.worldId = (int8_t) currentWorld->GetWorldId();
-	msg.vehicleType = DetectLocalVehicleType();
+	msg.vehicleType = DetectVehicleType(userActor);
 	SDL_memcpy(msg.position, pos, sizeof(msg.position));
 	SDL_memcpy(msg.direction, dir, sizeof(msg.direction));
 
@@ -496,31 +496,3 @@ void NetworkManager::NotifyPlayerCountChanged()
 	m_callbacks->OnPlayerCountChanged(count);
 }
 
-int8_t NetworkManager::DetectLocalVehicleType()
-{
-	static const struct {
-		const char* className;
-		int8_t vehicleType;
-	} vehicleMap[] = {
-		{"Helicopter", VEHICLE_HELICOPTER},
-		{"Jetski", VEHICLE_JETSKI},
-		{"DuneBuggy", VEHICLE_DUNEBUGGY},
-		{"Bike", VEHICLE_BIKE},
-		{"SkateBoard", VEHICLE_SKATEBOARD},
-		{"Motorcycle", VEHICLE_MOTOCYCLE},
-		{"TowTrack", VEHICLE_TOWTRACK},
-		{"Ambulance", VEHICLE_AMBULANCE},
-	};
-
-	LegoPathActor* actor = UserActor();
-	if (!actor) {
-		return VEHICLE_NONE;
-	}
-
-	for (const auto& entry : vehicleMap) {
-		if (actor->IsA(entry.className)) {
-			return entry.vehicleType;
-		}
-	}
-	return VEHICLE_NONE;
-}

@@ -75,7 +75,6 @@ private:
 	void RemoveAllRemotePlayers();
 
 	void NotifyPlayerCountChanged();
-	int8_t DetectLocalVehicleType();
 
 	// Serialize and send a fixed-size message via the transport
 	template <typename T>

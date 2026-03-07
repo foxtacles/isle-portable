@@ -423,7 +423,6 @@ void LegoPathActor::ApplyTransform(Matrix4& p_transform)
 		}
 	}
 
-	Extension<MultiplayerExt>::Call(HandlePostApplyTransform, this);
 }
 
 // FUNCTION: LEGO1 0x1002e790

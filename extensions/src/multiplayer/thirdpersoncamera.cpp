@@ -40,10 +40,7 @@ void ThirdPersonCamera::Disable()
 	m_playerROI = nullptr;
 	ClearRideAnimation();
 	m_animCacheMap.clear();
-	m_walkAnimCache = nullptr;
-	m_idleAnimCache = nullptr;
-	m_emoteAnimCache = nullptr;
-	m_emoteActive = false;
+	ClearAnimCaches();
 }
 
 void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
@@ -135,10 +132,7 @@ void ThirdPersonCamera::OnActorExit(IslePathActor* p_actor)
 	if (m_currentVehicleType != VEHICLE_NONE) {
 		// Exiting a vehicle: reinitialize immediately for the walking character.
 		ClearRideAnimation();
-		m_walkAnimCache = nullptr;
-		m_idleAnimCache = nullptr;
-		m_emoteAnimCache = nullptr;
-		m_emoteActive = false;
+		ClearAnimCaches();
 		m_animCacheMap.clear();
 		ReinitForCharacter();
 	}
@@ -151,20 +145,11 @@ void ThirdPersonCamera::OnActorExit(IslePathActor* p_actor)
 			VideoManager()->Get3DManager()->Remove(*m_playerROI);
 		}
 		ClearRideAnimation();
-		m_walkAnimCache = nullptr;
-		m_idleAnimCache = nullptr;
-		m_emoteAnimCache = nullptr;
-		m_emoteActive = false;
+		ClearAnimCaches();
 		m_currentVehicleType = VEHICLE_NONE;
 		m_playerROI = nullptr;
 		m_active = false;
 	}
-}
-
-void ThirdPersonCamera::OnPostApplyTransform(LegoPathActor* p_actor)
-{
-	// No-op: we don't modify the ROI transform. Animation is driven by Tick().
-	(void) p_actor;
 }
 
 void ThirdPersonCamera::Tick(float p_deltaTime)
@@ -186,11 +171,7 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 			}
 
 			// Force visibility of ride ROI map entries
-			for (MxU32 i = 1; i < m_rideRoiMapSize; i++) {
-				if (m_rideRoiMap[i] != nullptr) {
-					m_rideRoiMap[i]->SetVisibility(TRUE);
-				}
-			}
+			AnimUtils::EnsureROIMapVisibility(m_rideRoiMap, m_rideRoiMapSize);
 
 			// Only advance animation time when actually moving
 			float speed = actor->GetWorldSpeed();
@@ -241,18 +222,10 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 
 	// Ensure visibility of all mapped ROIs
 	if (walkRoiMap) {
-		for (MxU32 i = 1; i < walkRoiMapSize; i++) {
-			if (walkRoiMap[i] != nullptr) {
-				walkRoiMap[i]->SetVisibility(TRUE);
-			}
-		}
+		AnimUtils::EnsureROIMapVisibility(walkRoiMap, walkRoiMapSize);
 	}
 	if (m_idleAnimCache && m_idleAnimCache->roiMap) {
-		for (MxU32 i = 1; i < m_idleAnimCache->roiMapSize; i++) {
-			if (m_idleAnimCache->roiMap[i] != nullptr) {
-				m_idleAnimCache->roiMap[i]->SetVisibility(TRUE);
-			}
-		}
+		AnimUtils::EnsureROIMapVisibility(m_idleAnimCache->roiMap, m_idleAnimCache->roiMapSize);
 	}
 
 	float speed = userActor->GetWorldSpeed();
@@ -412,10 +385,7 @@ void ThirdPersonCamera::OnWorldEnabled(LegoWorld* p_world)
 
 	// Clear stale caches (animation presenters may have been recreated)
 	m_animCacheMap.clear();
-	m_walkAnimCache = nullptr;
-	m_idleAnimCache = nullptr;
-	m_emoteAnimCache = nullptr;
-	m_emoteActive = false;
+	ClearAnimCaches();
 
 	ReinitForCharacter();
 }
@@ -430,15 +400,20 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	m_playerROI = nullptr;
 	ClearRideAnimation();
 	m_animCacheMap.clear();
-	m_walkAnimCache = nullptr;
-	m_idleAnimCache = nullptr;
-	m_emoteAnimCache = nullptr;
-	m_emoteActive = false;
+	ClearAnimCaches();
 }
 
 ThirdPersonCamera::AnimCache* ThirdPersonCamera::GetOrBuildAnimCache(const char* p_animName)
 {
 	return AnimUtils::GetOrBuildAnimCache(m_animCacheMap, m_playerROI, p_animName);
+}
+
+void ThirdPersonCamera::ClearAnimCaches()
+{
+	m_walkAnimCache = nullptr;
+	m_idleAnimCache = nullptr;
+	m_emoteAnimCache = nullptr;
+	m_emoteActive = false;
 }
 
 void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
@@ -458,34 +433,6 @@ void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
 
 	world->GetCameraController()->SetWorldTransform(at, dir, up);
 	p_actor->TransformPointOfView();
-}
-
-int8_t ThirdPersonCamera::DetectVehicleType(LegoPathActor* p_actor)
-{
-	static const struct {
-		const char* className;
-		int8_t vehicleType;
-	} vehicleMap[] = {
-		{"Helicopter", VEHICLE_HELICOPTER},
-		{"Jetski", VEHICLE_JETSKI},
-		{"DuneBuggy", VEHICLE_DUNEBUGGY},
-		{"Bike", VEHICLE_BIKE},
-		{"SkateBoard", VEHICLE_SKATEBOARD},
-		{"Motorcycle", VEHICLE_MOTOCYCLE},
-		{"TowTrack", VEHICLE_TOWTRACK},
-		{"Ambulance", VEHICLE_AMBULANCE},
-	};
-
-	if (!p_actor) {
-		return VEHICLE_NONE;
-	}
-
-	for (const auto& entry : vehicleMap) {
-		if (p_actor->IsA(entry.className)) {
-			return entry.vehicleType;
-		}
-	}
-	return VEHICLE_NONE;
 }
 
 void ThirdPersonCamera::BuildRideAnimation(int8_t p_vehicleType)

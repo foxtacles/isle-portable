@@ -38,7 +38,6 @@ public:
 
 	static void HandleActorEnter(IslePathActor* p_actor);
 	static void HandleActorExit(IslePathActor* p_actor);
-	static void HandlePostApplyTransform(LegoPathActor* p_actor);
 	static MxBool ShouldInvertMovement(LegoPathActor* p_actor);
 
 	// Returns true if the multiplayer connection was rejected (e.g. room full).
@@ -60,7 +59,6 @@ constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
 constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
 constexpr auto HandleActorEnter = &MultiplayerExt::HandleActorEnter;
 constexpr auto HandleActorExit = &MultiplayerExt::HandleActorExit;
-constexpr auto HandlePostApplyTransform = &MultiplayerExt::HandlePostApplyTransform;
 constexpr auto ShouldInvertMovement = &MultiplayerExt::ShouldInvertMovement;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 #else
@@ -68,7 +66,6 @@ constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullp
 constexpr decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorEnter) HandleActorEnter = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorExit) HandleActorExit = nullptr;
-constexpr decltype(&MultiplayerExt::HandlePostApplyTransform) HandlePostApplyTransform = nullptr;
 constexpr decltype(&MultiplayerExt::ShouldInvertMovement) ShouldInvertMovement = nullptr;
 constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 #endif

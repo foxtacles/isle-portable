@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <type_traits>
 
+class LegoPathActor;
+
 namespace Multiplayer
 {
 
@@ -143,6 +145,9 @@ extern const char* const g_rideVehicleROINames[VEHICLE_COUNT];
 
 // Returns true if the vehicle type has no ride animation (model swap instead)
 bool IsLargeVehicle(int8_t p_vehicleType);
+
+// Detect the vehicle type of a given actor, or VEHICLE_NONE if not a vehicle
+int8_t DetectVehicleType(LegoPathActor* p_actor);
 
 // Validate actorId is a playable character (1-5, not brickster)
 inline bool IsValidActorId(uint8_t p_actorId)

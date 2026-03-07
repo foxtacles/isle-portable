@@ -30,7 +30,6 @@ public:
 	// Core hooks
 	void OnActorEnter(IslePathActor* p_actor);
 	void OnActorExit(IslePathActor* p_actor);
-	void OnPostApplyTransform(LegoPathActor* p_actor);
 
 	// Called every frame from NetworkManager::Tickle()
 	void Tick(float p_deltaTime);
@@ -47,8 +46,8 @@ private:
 	using AnimCache = AnimUtils::AnimCache;
 
 	AnimCache* GetOrBuildAnimCache(const char* p_animName);
+	void ClearAnimCaches();
 	void SetupCamera(LegoPathActor* p_actor);
-	int8_t DetectVehicleType(LegoPathActor* p_actor);
 	void BuildRideAnimation(int8_t p_vehicleType);
 	void ClearRideAnimation();
 	void ApplyIdleFrame0();

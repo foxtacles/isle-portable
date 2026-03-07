@@ -1,11 +1,11 @@
 #pragma once
 
 #include "mxtypes.h"
+#include "roi/legoroi.h"
 
 #include <map>
 #include <string>
 
-class LegoROI;
 class LegoAnim;
 
 namespace Multiplayer
@@ -67,6 +67,15 @@ AnimCache* GetOrBuildAnimCache(
 	LegoROI* p_roi,
 	const char* p_animName
 );
+
+inline void EnsureROIMapVisibility(LegoROI** p_roiMap, MxU32 p_roiMapSize)
+{
+	for (MxU32 i = 1; i < p_roiMapSize; i++) {
+		if (p_roiMap[i] != nullptr) {
+			p_roiMap[i]->SetVisibility(TRUE);
+		}
+	}
+}
 
 } // namespace AnimUtils
 

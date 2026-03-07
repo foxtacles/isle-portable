@@ -271,18 +271,10 @@ void RemotePlayer::UpdateAnimation(float p_deltaTime)
 
 	// Ensure visibility of all mapped ROIs
 	if (walkRoiMap) {
-		for (MxU32 i = 1; i < walkRoiMapSize; i++) {
-			if (walkRoiMap[i] != nullptr) {
-				walkRoiMap[i]->SetVisibility(TRUE);
-			}
-		}
+		AnimUtils::EnsureROIMapVisibility(walkRoiMap, walkRoiMapSize);
 	}
 	if (m_idleAnimCache && m_idleAnimCache->roiMap) {
-		for (MxU32 i = 1; i < m_idleAnimCache->roiMapSize; i++) {
-			if (m_idleAnimCache->roiMap[i] != nullptr) {
-				m_idleAnimCache->roiMap[i]->SetVisibility(TRUE);
-			}
-		}
+		AnimUtils::EnsureROIMapVisibility(m_idleAnimCache->roiMap, m_idleAnimCache->roiMapSize);
 	}
 
 	bool inVehicle = (m_currentVehicleType != VEHICLE_NONE);
