@@ -56,9 +56,9 @@ void MultiplayerExt::Initialize()
 	// Third-person camera enabled by default, toggled via WASM export
 	s_networkManager->GetThirdPersonCamera().Enable();
 
-	auto actorIt = options.find("multiplayer:actor");
-	if (actorIt != options.end() && !actorIt->second.empty()) {
-		uint8_t displayIndex = ResolveDisplayActorIndex(actorIt->second.c_str());
+	std::string actor = options["multiplayer:actor"];
+	if (!actor.empty()) {
+		uint8_t displayIndex = ResolveDisplayActorIndex(actor.c_str());
 		if (displayIndex != Multiplayer::DISPLAY_ACTOR_NONE) {
 			s_networkManager->SetDisplayActorIndex(displayIndex);
 		}
