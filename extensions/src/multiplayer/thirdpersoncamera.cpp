@@ -65,8 +65,11 @@ void ThirdPersonCamera::Disable()
 		// consistent (no 180-degree flip for others).
 		// For walking characters the target is m_playerROI; for vehicles it
 		// is the vehicle actor's ROI (UserActor() returns the vehicle).
-		LegoROI* turnAroundROI =
-			(m_currentVehicleType == VEHICLE_NONE) ? m_playerROI : (userActor ? userActor->GetROI() : nullptr);
+		// When a display actor override is active, flip the native ROI (not the
+		// display clone) since TransformPointOfView uses it for the 1st-person camera.
+		LegoROI* turnAroundROI = (m_currentVehicleType == VEHICLE_NONE && !HasDisplayOverride())
+			? m_playerROI
+			: (userActor ? userActor->GetROI() : nullptr);
 
 		if (turnAroundROI) {
 			FlipROIDirection(turnAroundROI);
@@ -148,14 +151,10 @@ void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
 
 	// Non-vehicle (walking character) entry — Enter() already called TurnAround.
 	if (IsValidDisplayActorIndex(m_displayActorIndex)) {
-		newROI->SetVisibility(FALSE); // hide native ROI
-		if (!m_displayROI) {
-			CreateDisplayClone();
+		newROI->SetVisibility(FALSE);
+		if (!EnsureDisplayROI()) {
+			return;
 		}
-		if (!m_displayROI) {
-			return; // clone failed
-		}
-		m_playerROI = m_displayROI;
 	}
 	else {
 		m_playerROI = newROI;
@@ -233,7 +232,9 @@ void ThirdPersonCamera::OnCamAnimEnd(LegoPathActor* p_actor)
 	// FUN_1004b6d0's PlaceActor set the ROI with standard direction
 	// (z = visual forward). The 3rd person camera needs backward-z.
 	// Flip the ROI direction, then re-setup the camera.
-	LegoROI* roi = (m_currentVehicleType == VEHICLE_NONE) ? m_playerROI : p_actor->GetROI();
+	// When a display actor override is active, flip the native ROI (not the
+	// display clone) since Tick() syncs the clone's transform from it.
+	LegoROI* roi = (m_currentVehicleType == VEHICLE_NONE && !HasDisplayOverride()) ? m_playerROI : p_actor->GetROI();
 	if (roi) {
 		FlipROIDirection(roi);
 	}
@@ -570,6 +571,21 @@ void ThirdPersonCamera::SetDisplayActorIndex(uint8_t p_index)
 	m_displayActorIndex = p_index;
 }
 
+bool ThirdPersonCamera::EnsureDisplayROI()
+{
+	if (!IsValidDisplayActorIndex(m_displayActorIndex)) {
+		return false;
+	}
+	if (!m_displayROI) {
+		CreateDisplayClone();
+	}
+	if (!m_displayROI) {
+		return false;
+	}
+	m_playerROI = m_displayROI;
+	return true;
+}
+
 void ThirdPersonCamera::CreateDisplayClone()
 {
 	if (!IsValidDisplayActorIndex(m_displayActorIndex)) {
@@ -587,6 +603,9 @@ void ThirdPersonCamera::CreateDisplayClone()
 void ThirdPersonCamera::DestroyDisplayClone()
 {
 	if (m_displayROI) {
+		if (m_playerROI == m_displayROI) {
+			m_playerROI = nullptr;
+		}
 		VideoManager()->Get3DManager()->Remove(*m_displayROI);
 		CharacterManager()->ReleaseActor(m_displayUniqueName);
 		m_displayROI = nullptr;
@@ -647,6 +666,11 @@ void ThirdPersonCamera::ReinitForCharacter()
 	m_currentVehicleType = vehicleType;
 
 	if (vehicleType != VEHICLE_NONE) {
+		if (IsValidDisplayActorIndex(m_displayActorIndex) && !EnsureDisplayROI()) {
+			m_active = false;
+			return;
+		}
+
 		if (!m_playerROI) {
 			m_active = false;
 			return;
@@ -675,15 +699,11 @@ void ThirdPersonCamera::ReinitForCharacter()
 
 	// Reinitializing for walking character
 	if (IsValidDisplayActorIndex(m_displayActorIndex)) {
-		if (!m_displayROI) {
-			CreateDisplayClone();
-		}
-		if (!m_displayROI) {
+		roi->SetVisibility(FALSE);
+		if (!EnsureDisplayROI()) {
 			m_active = false;
 			return;
 		}
-		roi->SetVisibility(FALSE); // hide native
-		m_playerROI = m_displayROI;
 	}
 	else {
 		m_playerROI = roi;
@@ -691,8 +711,10 @@ void ThirdPersonCamera::ReinitForCharacter()
 
 	// Re-apply TurnAround if we undid it in Disable().
 	// Only set the local matrix here; the subsequent Add() will propagate world data.
+	// When a display actor override is active, flip the native ROI (not the
+	// display clone) since Tick() syncs the clone's transform from it.
 	if (m_roiUnflipped) {
-		FlipROIDirection(m_playerROI);
+		FlipROIDirection(HasDisplayOverride() ? roi : m_playerROI);
 		m_roiUnflipped = false;
 	}
 

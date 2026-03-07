@@ -55,6 +55,7 @@ private:
 	void ApplyIdleFrame0();
 	void ReinitForCharacter();
 
+	bool EnsureDisplayROI();
 	void CreateDisplayClone();
 	void DestroyDisplayClone();
 	bool HasDisplayOverride() const { return m_displayROI != nullptr; }

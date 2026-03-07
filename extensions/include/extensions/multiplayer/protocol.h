@@ -158,11 +158,6 @@ inline bool IsValidActorId(uint8_t p_actorId)
 
 static const uint8_t DISPLAY_ACTOR_NONE = 0xFF;
 
-inline bool IsValidDisplayActorIndex(uint8_t p_index)
-{
-	return p_index < 66;
-}
-
 // Parse the message type from a buffer. Returns MSG type or 0 on error.
 inline uint8_t ParseMessageType(const uint8_t* p_data, size_t p_length)
 {
