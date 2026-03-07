@@ -1,5 +1,6 @@
 import {
 	HEADER_SIZE,
+	MSG_CUSTOMIZE,
 	MSG_REQUEST_SNAPSHOT,
 	MSG_WORLD_EVENT_REQUEST,
 	MSG_WORLD_SNAPSHOT,
@@ -10,8 +11,6 @@ import {
 	readTargetPeerId,
 	stampSender,
 } from "./protocol";
-
-const MSG_CUSTOMIZE = 10;
 import type { Env } from "./relay";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -171,6 +170,10 @@ export class GameRoom implements DurableObject {
 			data.length >= SNAPSHOT_MIN_SIZE
 		) {
 			this.sendToTarget(stamped);
+		} else if (msgType === MSG_CUSTOMIZE) {
+			// Broadcast to all including sender so the clicker sees effects
+			// on the target's clone on their own screen.
+			this.broadcast(stamped.buffer);
 		} else {
 			this.broadcastExcept(stamped.buffer, peerId);
 		}

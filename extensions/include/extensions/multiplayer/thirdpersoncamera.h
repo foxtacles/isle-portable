@@ -37,15 +37,16 @@ public:
 	void Tick(float p_deltaTime);
 
 	// Animation selection (forwarded from NetworkManager)
-	void SetWalkAnimId(uint8_t p_id);
-	void SetIdleAnimId(uint8_t p_id);
+	void SetWalkAnimId(uint8_t p_walkAnimId);
+	void SetIdleAnimId(uint8_t p_idleAnimId);
 	void TriggerEmote(uint8_t p_emoteId);
-	void SetDisplayActorIndex(uint8_t p_index);
+	void SetDisplayActorIndex(uint8_t p_displayActorIndex);
 	uint8_t GetDisplayActorIndex() const { return m_displayActorIndex; }
 	LegoROI* GetDisplayROI() const { return m_displayROI; }
 	CustomizeState& GetCustomizeState() { return m_customizeState; }
 
-	void SetClickAnimObjectId(MxU32 p_objectId) { m_clickAnimObjectId = p_objectId; }
+	void ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex);
+	void SetClickAnimObjectId(MxU32 p_clickAnimObjectId) { m_clickAnimObjectId = p_clickAnimObjectId; }
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_currentVehicleType != VEHICLE_NONE; }
 

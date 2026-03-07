@@ -150,6 +150,7 @@ void RemotePlayer::UpdateFromNetwork(const PlayerStateMsg& p_msg)
 		SET3(m_currentPosition, m_targetPosition);
 		SET3(m_currentDirection, m_targetDirection);
 		SET3(m_currentUp, m_targetUp);
+		m_targetSpeed = 0.0f; // No meaningful speed from first sample
 		m_hasReceivedUpdate = true;
 	}
 
@@ -177,9 +178,6 @@ void RemotePlayer::UpdateFromNetwork(const PlayerStateMsg& p_msg)
 	// Update customize state from packed data
 	CustomizeState newState;
 	newState.Unpack(p_msg.customizeData);
-	newState.sound = newState.sound; // already unpacked
-	newState.move = newState.move;
-	newState.mood = newState.mood;
 
 	if (newState != m_customizeState) {
 		uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex, m_actorId);
@@ -588,29 +586,3 @@ void RemotePlayer::StopClickAnimation()
 	}
 }
 
-void RemotePlayer::ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex)
-{
-	if (!m_spawned || !m_roi) {
-		return;
-	}
-
-	uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex, m_actorId);
-
-	switch (changeType) {
-	case CHANGE_VARIANT:
-		CharacterCustomizer::SwitchVariant(m_roi, actorInfoIndex, m_customizeState);
-		break;
-	case CHANGE_SOUND:
-		CharacterCustomizer::SwitchSound(m_customizeState);
-		break;
-	case CHANGE_MOVE:
-		CharacterCustomizer::SwitchMove(m_customizeState);
-		break;
-	case CHANGE_COLOR:
-		CharacterCustomizer::SwitchColor(m_roi, actorInfoIndex, m_customizeState, partIndex);
-		break;
-	case CHANGE_MOOD:
-		CharacterCustomizer::SwitchMood(m_customizeState);
-		break;
-	}
-}

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "extensions/multiplayer/customizestate.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -38,6 +37,7 @@ public:
 	}
 
 	void Initialize(NetworkTransport* p_transport, PlatformCallbacks* p_callbacks);
+	void HandleCreate();
 	void Shutdown();
 
 	void Connect(const char* p_roomId);
@@ -45,16 +45,16 @@ public:
 	bool IsConnected() const;
 	bool WasRejected() const;
 
-	void SetWalkAnimation(uint8_t p_index);
-	void SetIdleAnimation(uint8_t p_index);
+	void SetWalkAnimation(uint8_t p_walkAnimId);
+	void SetIdleAnimation(uint8_t p_idleAnimId);
 	void SendEmote(uint8_t p_emoteId);
-	void SetDisplayActorIndex(uint8_t p_index);
+	void SetDisplayActorIndex(uint8_t p_displayActorIndex);
 
 	// Thread-safe request methods for cross-thread callers (e.g. WASM exports
 	// running on the browser main thread).  Deferred to the game thread in Tickle().
 	void RequestToggleThirdPerson() { m_pendingToggleThirdPerson.store(true, std::memory_order_relaxed); }
-	void RequestSetWalkAnimation(uint8_t p_index) { m_pendingWalkAnim.store(p_index, std::memory_order_relaxed); }
-	void RequestSetIdleAnimation(uint8_t p_index) { m_pendingIdleAnim.store(p_index, std::memory_order_relaxed); }
+	void RequestSetWalkAnimation(uint8_t p_walkAnimId) { m_pendingWalkAnim.store(p_walkAnimId, std::memory_order_relaxed); }
+	void RequestSetIdleAnimation(uint8_t p_idleAnimId) { m_pendingIdleAnim.store(p_idleAnimId, std::memory_order_relaxed); }
 	void RequestSendEmote(uint8_t p_emoteId) { m_pendingEmote.store(p_emoteId, std::memory_order_relaxed); }
 	void RequestToggleNameBubbles() { m_pendingToggleNameBubbles.store(true, std::memory_order_relaxed); }
 	void RequestToggleAllowCustomize() { m_pendingToggleAllowCustomize.store(true, std::memory_order_relaxed); }
@@ -63,8 +63,7 @@ public:
 
 	RemotePlayer* FindPlayerByROI(LegoROI* roi) const;
 	bool IsClonedCharacter(const char* p_name) const;
-	CustomizeState& GetLocalCustomizeState() { return m_localCustomizeState; }
-	void SendCustomize(uint32_t targetPeerId, uint8_t changeType, uint8_t partIndex);
+	void SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType, uint8_t p_partIndex);
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -117,7 +116,6 @@ private:
 	uint8_t m_localWalkAnimId;
 	uint8_t m_localIdleAnimId;
 	uint8_t m_localDisplayActorIndex;
-	CustomizeState m_localCustomizeState;
 	bool m_localAllowRemoteCustomize;
 	bool m_inIsleWorld;
 	bool m_registered;

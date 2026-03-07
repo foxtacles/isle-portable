@@ -47,10 +47,8 @@ public:
 	void DestroyNameBubble();
 
 	const CustomizeState& GetCustomizeState() const { return m_customizeState; }
-	CustomizeState& GetCustomizeStateMut() { return m_customizeState; }
 	bool GetAllowRemoteCustomize() const { return m_allowRemoteCustomize; }
-	void ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex);
-	void SetClickAnimObjectId(MxU32 p_objectId) { m_clickAnimObjectId = p_objectId; }
+	void SetClickAnimObjectId(MxU32 p_clickAnimObjectId) { m_clickAnimObjectId = p_clickAnimObjectId; }
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_currentVehicleType != VEHICLE_NONE; }
 	bool IsMoving() const { return m_currentVehicleType != VEHICLE_NONE || m_targetSpeed > 0.01f; }

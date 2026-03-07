@@ -5,6 +5,7 @@
 #include "extensions/multiplayer/charactercloner.h"
 #include "extensions/multiplayer/charactercustomizer.h"
 #include "islepathactor.h"
+#include "legogamestate.h"
 #include "legoanimpresenter.h"
 #include "legocameracontroller.h"
 #include "legocharactermanager.h"
@@ -421,28 +422,28 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 	}
 }
 
-void ThirdPersonCamera::SetWalkAnimId(uint8_t p_id)
+void ThirdPersonCamera::SetWalkAnimId(uint8_t p_walkAnimId)
 {
-	if (p_id >= g_walkAnimCount) {
+	if (p_walkAnimId >= g_walkAnimCount) {
 		return;
 	}
 
-	if (p_id != m_walkAnimId) {
-		m_walkAnimId = p_id;
+	if (p_walkAnimId != m_walkAnimId) {
+		m_walkAnimId = p_walkAnimId;
 		if (m_active) {
 			m_walkAnimCache = GetOrBuildAnimCache(g_walkAnimNames[m_walkAnimId]);
 		}
 	}
 }
 
-void ThirdPersonCamera::SetIdleAnimId(uint8_t p_id)
+void ThirdPersonCamera::SetIdleAnimId(uint8_t p_idleAnimId)
 {
-	if (p_id >= g_idleAnimCount) {
+	if (p_idleAnimId >= g_idleAnimCount) {
 		return;
 	}
 
-	if (p_id != m_idleAnimId) {
-		m_idleAnimId = p_id;
+	if (p_idleAnimId != m_idleAnimId) {
+		m_idleAnimId = p_idleAnimId;
 		if (m_active) {
 			m_idleAnimCache = GetOrBuildAnimCache(g_idleAnimNames[m_idleAnimId]);
 		}
@@ -475,6 +476,16 @@ void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 	// Save clean transform to prevent scale accumulation during emote
 	// (the animation root writes scaled values into the ROI each frame).
 	m_emoteParentTransform = m_playerROI->GetLocal2World();
+}
+
+void ThirdPersonCamera::ApplyCustomizeChange(uint8_t changeType, uint8_t partIndex)
+{
+	uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(
+		m_displayActorIndex,
+		GameState() ? GameState()->GetActorId() : 0
+	);
+
+	CharacterCustomizer::ApplyChange(m_displayROI, actorInfoIndex, m_customizeState, changeType, partIndex);
 }
 
 void ThirdPersonCamera::StopClickAnimation()
@@ -581,12 +592,12 @@ void ThirdPersonCamera::BuildRideAnimation(int8_t p_vehicleType)
 	m_animTime = 0.0f;
 }
 
-void ThirdPersonCamera::SetDisplayActorIndex(uint8_t p_index)
+void ThirdPersonCamera::SetDisplayActorIndex(uint8_t p_displayActorIndex)
 {
-	if (m_displayActorIndex != p_index) {
-		m_customizeState.InitFromActorInfo(p_index);
+	if (m_displayActorIndex != p_displayActorIndex) {
+		m_customizeState.InitFromActorInfo(p_displayActorIndex);
 	}
-	m_displayActorIndex = p_index;
+	m_displayActorIndex = p_displayActorIndex;
 }
 
 bool ThirdPersonCamera::EnsureDisplayROI()

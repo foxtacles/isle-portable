@@ -26,6 +26,7 @@ namespace Extensions
 class MultiplayerExt {
 public:
 	static void Initialize();
+	static void HandleCreate();
 	static MxBool HandleWorldEnable(LegoWorld* p_world, MxBool p_enable);
 
 	// Intercepts click notifications on plants/buildings for multiplayer routing.
@@ -64,6 +65,7 @@ private:
 #ifdef EXTENSIONS
 LEGO1_EXPORT bool IsMultiplayerRejected();
 
+constexpr auto HandleCreate = &MultiplayerExt::HandleCreate;
 constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
 constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
 constexpr auto HandleROIClick = &MultiplayerExt::HandleROIClick;
@@ -74,6 +76,7 @@ constexpr auto ShouldInvertMovement = &MultiplayerExt::ShouldInvertMovement;
 constexpr auto IsClonedCharacter = &MultiplayerExt::IsClonedCharacter;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 #else
+constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
 constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
 constexpr decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
 constexpr decltype(&MultiplayerExt::HandleROIClick) HandleROIClick = nullptr;

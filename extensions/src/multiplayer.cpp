@@ -1,8 +1,6 @@
 #include "extensions/multiplayer.h"
 
-#include "extensions/extensions.h"
 #include "extensions/multiplayer/charactercustomizer.h"
-#include "extensions/multiplayer/customizestate.h"
 #include "extensions/multiplayer/networkmanager.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/protocol.h"
@@ -72,6 +70,13 @@ void MultiplayerExt::Initialize()
 		s_networkManager->Connect(room.c_str());
 	}
 #endif
+}
+
+void MultiplayerExt::HandleCreate()
+{
+	if (s_networkManager) {
+		s_networkManager->HandleCreate();
+	}
 }
 
 MxBool MultiplayerExt::HandleWorldEnable(LegoWorld* p_world, MxBool p_enable)
@@ -149,64 +154,13 @@ MxBool MultiplayerExt::HandleROIClick(LegoROI* p_rootROI, LegoEventNotificationP
 		return FALSE;
 	}
 
-	// Get target info
-	uint8_t displayActorIndex;
-	uint8_t actorId;
-	Multiplayer::CustomizeState* state;
-
-	if (remote) {
-		displayActorIndex = remote->GetDisplayActorIndex();
-		actorId = remote->GetActorId();
-		state = &remote->GetCustomizeStateMut();
-	}
-	else {
-		displayActorIndex = mgr->GetThirdPersonCamera().GetDisplayActorIndex();
-		actorId = GameState()->GetActorId();
-		state = &mgr->GetThirdPersonCamera().GetCustomizeState();
-	}
-
-	uint8_t actorInfoIndex =
-		Multiplayer::CharacterCustomizer::ResolveActorInfoIndex(displayActorIndex, actorId);
-
-	// Apply change
-	switch (changeType) {
-	case Multiplayer::CHANGE_VARIANT:
-		Multiplayer::CharacterCustomizer::SwitchVariant(p_rootROI, actorInfoIndex, *state);
-		break;
-	case Multiplayer::CHANGE_SOUND:
-		Multiplayer::CharacterCustomizer::SwitchSound(*state);
-		break;
-	case Multiplayer::CHANGE_MOVE:
-		Multiplayer::CharacterCustomizer::SwitchMove(*state);
-		break;
-	case Multiplayer::CHANGE_COLOR:
-		Multiplayer::CharacterCustomizer::SwitchColor(p_rootROI, actorInfoIndex, *state, partIndex);
-		break;
-	case Multiplayer::CHANGE_MOOD:
-		Multiplayer::CharacterCustomizer::SwitchMood(*state);
-		break;
-	}
-
-	// Play click effects (skip animation when on a vehicle)
-	Multiplayer::CharacterCustomizer::PlayClickSound(
-		p_rootROI, *state, changeType == Multiplayer::CHANGE_MOOD
-	);
-
-	bool inVehicle = remote ? remote->IsInVehicle() : mgr->GetThirdPersonCamera().IsInVehicle();
-	if (!inVehicle) {
-		MxU32 clickAnimId = Multiplayer::CharacterCustomizer::PlayClickAnimation(p_rootROI, *state);
-
-		if (remote) {
-			remote->SetClickAnimObjectId(clickAnimId);
-		}
-		else {
-			mgr->GetThirdPersonCamera().SetClickAnimObjectId(clickAnimId);
-		}
-	}
-
-	// Send customize message so remote clients see the click animation
+	// Send a customize request to the server. The server echoes it back to all peers
+	// (including the sender). HandleCustomize then applies the change and plays effects.
+	// For remote targets this avoids flip-flop from stale state messages; for self targets
+	// it keeps the code path uniform.
+	uint32_t targetPeerId = remote ? remote->GetPeerId() : mgr->GetLocalPeerId();
 	mgr->SendCustomize(
-		remote ? remote->GetPeerId() : mgr->GetLocalPeerId(),
+		targetPeerId,
 		changeType,
 		static_cast<uint8_t>(partIndex >= 0 ? partIndex : 0xFF)
 	);
