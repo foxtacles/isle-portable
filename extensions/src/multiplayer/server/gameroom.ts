@@ -10,6 +10,8 @@ import {
 	readTargetPeerId,
 	stampSender,
 } from "./protocol";
+
+const MSG_CUSTOMIZE = 10;
 import type { Env } from "./relay";
 
 const CORS_HEADERS: Record<string, string> = {

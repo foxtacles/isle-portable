@@ -1,5 +1,6 @@
 #pragma once
 
+#include "extensions/multiplayer/customizestate.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -56,8 +57,14 @@ public:
 	void RequestSetIdleAnimation(uint8_t p_index) { m_pendingIdleAnim.store(p_index, std::memory_order_relaxed); }
 	void RequestSendEmote(uint8_t p_emoteId) { m_pendingEmote.store(p_emoteId, std::memory_order_relaxed); }
 	void RequestToggleNameBubbles() { m_pendingToggleNameBubbles.store(true, std::memory_order_relaxed); }
+	void RequestToggleAllowCustomize() { m_pendingToggleAllowCustomize.store(true, std::memory_order_relaxed); }
 
 	bool GetShowNameBubbles() const { return m_showNameBubbles; }
+
+	RemotePlayer* FindPlayerByROI(LegoROI* roi) const;
+	bool IsClonedCharacter(const char* p_name) const;
+	CustomizeState& GetLocalCustomizeState() { return m_localCustomizeState; }
+	void SendCustomize(uint32_t targetPeerId, uint8_t changeType, uint8_t partIndex);
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -69,6 +76,7 @@ public:
 	MxBool HandleEntityMutation(LegoEntity* p_entity, MxU8 p_changeType);
 
 	bool IsHost() const { return m_localPeerId != 0 && m_localPeerId == m_hostPeerId; }
+	uint32_t GetLocalPeerId() const { return m_localPeerId; }
 
 private:
 	void BroadcastLocalState();
@@ -82,6 +90,7 @@ private:
 	void HandleState(const PlayerStateMsg& p_msg);
 	void HandleHostAssign(const HostAssignMsg& p_msg);
 	void HandleEmote(const EmoteMsg& p_msg);
+	void HandleCustomize(const CustomizeMsg& p_msg);
 
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
@@ -98,6 +107,7 @@ private:
 	WorldStateSync m_worldSync;
 	ThirdPersonCamera m_thirdPersonCamera;
 	std::map<uint32_t, std::unique_ptr<RemotePlayer>> m_remotePlayers;
+	std::map<LegoROI*, RemotePlayer*> m_roiToPlayer;
 
 	uint32_t m_localPeerId;
 	uint32_t m_hostPeerId;
@@ -107,6 +117,8 @@ private:
 	uint8_t m_localWalkAnimId;
 	uint8_t m_localIdleAnimId;
 	uint8_t m_localDisplayActorIndex;
+	CustomizeState m_localCustomizeState;
+	bool m_localAllowRemoteCustomize;
 	bool m_inIsleWorld;
 	bool m_registered;
 
@@ -115,6 +127,7 @@ private:
 	std::atomic<int> m_pendingWalkAnim;
 	std::atomic<int> m_pendingIdleAnim;
 	std::atomic<int> m_pendingEmote;
+	std::atomic<bool> m_pendingToggleAllowCustomize;
 
 	bool m_showNameBubbles;
 

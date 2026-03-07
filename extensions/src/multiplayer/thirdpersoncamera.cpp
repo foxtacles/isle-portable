@@ -3,6 +3,7 @@
 #include "3dmanager/lego3dmanager.h"
 #include "anim/legoanim.h"
 #include "extensions/multiplayer/charactercloner.h"
+#include "extensions/multiplayer/charactercustomizer.h"
 #include "islepathactor.h"
 #include "legoanimpresenter.h"
 #include "legocameracontroller.h"
@@ -39,8 +40,8 @@ ThirdPersonCamera::ThirdPersonCamera()
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr), m_walkAnimId(0), m_idleAnimId(0),
 	  m_walkAnimCache(nullptr), m_idleAnimCache(nullptr), m_animTime(0.0f), m_idleTime(0.0f), m_idleAnimTime(0.0f),
 	  m_wasMoving(false), m_emoteAnimCache(nullptr), m_emoteTime(0.0f), m_emoteDuration(0.0f), m_emoteActive(false),
-	  m_currentVehicleType(VEHICLE_NONE), m_rideAnim(nullptr), m_rideRoiMap(nullptr), m_rideRoiMapSize(0),
-	  m_rideVehicleROI(nullptr)
+	  m_clickAnimObjectId(0), m_currentVehicleType(VEHICLE_NONE), m_rideAnim(nullptr), m_rideRoiMap(nullptr),
+	  m_rideRoiMapSize(0), m_rideVehicleROI(nullptr)
 {
 	SDL_memset(m_displayUniqueName, 0, sizeof(m_displayUniqueName));
 }
@@ -254,6 +255,7 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 
 	// Small vehicle with ride animation (like RemotePlayer)
 	if (m_currentVehicleType != VEHICLE_NONE) {
+		StopClickAnimation();
 		if (m_rideAnim && m_rideRoiMap) {
 			LegoPathActor* actor = UserActor();
 			if (!actor || !actor->GetROI()) {
@@ -331,10 +333,13 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 	float speed = userActor->GetWorldSpeed();
 	bool isMoving = fabsf(speed) > 0.01f;
 
-	// Movement interrupts emotes
-	if (isMoving && m_emoteActive) {
-		m_emoteActive = false;
-		m_emoteAnimCache = nullptr;
+	// Movement interrupts click animations and emotes
+	if (isMoving) {
+		StopClickAnimation();
+		if (m_emoteActive) {
+			m_emoteActive = false;
+			m_emoteAnimCache = nullptr;
+		}
 	}
 
 	if (isMoving) {
@@ -460,6 +465,8 @@ void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 		return;
 	}
 
+	StopClickAnimation();
+
 	m_emoteAnimCache = cache;
 	m_emoteTime = 0.0f;
 	m_emoteDuration = (float) cache->anim->GetDuration();
@@ -468,6 +475,14 @@ void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 	// Save clean transform to prevent scale accumulation during emote
 	// (the animation root writes scaled values into the ROI each frame).
 	m_emoteParentTransform = m_playerROI->GetLocal2World();
+}
+
+void ThirdPersonCamera::StopClickAnimation()
+{
+	if (m_clickAnimObjectId != 0) {
+		CharacterCustomizer::StopClickAnimation(m_clickAnimObjectId);
+		m_clickAnimObjectId = 0;
+	}
 }
 
 void ThirdPersonCamera::OnWorldEnabled(LegoWorld* p_world)
@@ -568,6 +583,9 @@ void ThirdPersonCamera::BuildRideAnimation(int8_t p_vehicleType)
 
 void ThirdPersonCamera::SetDisplayActorIndex(uint8_t p_index)
 {
+	if (m_displayActorIndex != p_index) {
+		m_customizeState.InitFromActorInfo(p_index);
+	}
 	m_displayActorIndex = p_index;
 }
 
@@ -598,10 +616,17 @@ void ThirdPersonCamera::CreateDisplayClone()
 	}
 	SDL_snprintf(m_displayUniqueName, sizeof(m_displayUniqueName), "tp_display");
 	m_displayROI = CharacterCloner::Clone(charMgr, m_displayUniqueName, actorName);
+
+	if (m_displayROI) {
+		// Reapply existing customize state to the new clone (preserves state across world transitions).
+		// The state is only reset to defaults when the display actor index changes (SetDisplayActorIndex).
+		CharacterCustomizer::ApplyFullState(m_displayROI, m_displayActorIndex, m_customizeState);
+	}
 }
 
 void ThirdPersonCamera::DestroyDisplayClone()
 {
+	StopClickAnimation();
 	if (m_displayROI) {
 		if (m_playerROI == m_displayROI) {
 			m_playerROI = nullptr;
