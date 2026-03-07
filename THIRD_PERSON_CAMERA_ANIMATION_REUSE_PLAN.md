@@ -85,28 +85,29 @@ This avoids oscillation: every frame, the ROI direction stays negated (correct f
 
 ---
 
-## Known Issues (TODO)
+## Known Issues
 
-### 1. Initial spawn facing direction
-When spawning for the first time, the character faces the wrong way until the player starts moving. The initial ROI direction after `Enter()` + `TurnAround()` may not match the visual expectation. The `ShouldInvertMovement` hook only fires during `CalculateTransform` (keyboard-driven movement), so before the first movement frame the ROI direction is still in its post-TurnAround state. May need to apply an initial direction correction in `OnActorEnter` or force-apply the transform once.
+### 1. Initial spawn facing direction — FIXED
+**Root cause:** `OnActorEnter()` made the player ROI visible and built animation caches, but never applied an animation frame. `Tick()` wouldn't apply idle animation until `m_idleTime >= 2.5f`, leaving bones in uninitialized state.
+**Fix:** Added `ApplyIdleFrame0()` helper that applies idle animation at t=0 to reset all bones. Called at end of `OnActorEnter()` after building caches.
 
-### 2. Vehicle enter/leave is broken
-When entering a vehicle (e.g. Skateboard):
-- The first-person HUD overlay is shown instead of being hidden
-- The character ROI is abandoned and remains static at the position where the character was left
-- The camera stays in third-person view but the vehicle interaction is broken
+### 2. Vehicle enter/leave — FIXED
+**Root cause (enter):** Vehicle path never hid the old walking character ROI. Dashboard overlay remained visible.
+**Root cause (exit):** `OnActorExit()` did full teardown. Restored walking character never got `HandleActorEnter` called.
+**Fix:**
+- On vehicle enter: hide old player ROI, set up camera, build ride animation for small vehicles (Bike/Skateboard/Motorcycle), defer dashboard removal
+- On vehicle exit: deferred reinit (`m_needsReinit` flag) — keeps `m_active = true`, `Tick()` calls `ReinitForCharacter()` when UserActor is back to a non-vehicle
+- Dashboard removal: deferred `RemoveFromCurrentWorld()` in `Tick()` removes the parent dashboard presenter
+- Ride animations: `BuildRideAnimation()` implemented following `RemotePlayer::EnterVehicle()` pattern
 
-When leaving the vehicle:
-- Reverts to regular first-person camera instead of third-person
-- The abandoned character ROI remains visible and static at the vehicle exit position
+### 3. "Hat Tip" emote distorts character mesh — PARTIALLY FIXED / DEFERRED
+**Observed:** Distortion in last ~0.5-1s of Hat Tip (`CNs012xx`). Wave (`CNs011xx`) works fine. Only on local player, not remote.
+**Partial fix:** `ApplyIdleFrame0()` at emote completion resets bones to neutral pose (fixes post-emote distortion).
+**Deferred:** Mid-emote distortion likely caused by dual transform conflict — game engine's `ApplyTransform()` and extension's `ApplyAnimationTransformation()` both modifying the same ROI. Hat Tip likely has root-level keyframes that conflict with engine transforms; Wave only animates child bones. Remote players are unaffected because their ROI is not driven by the game engine.
 
-Root cause: `OnActorEnter`/`OnActorExit` fire for the vehicle actor too (since vehicles are also `IslePathActor` subclasses). The third-person camera needs to handle the transition between character and vehicle actors properly — hide/show the correct ROIs, manage ride animations for small vehicles, and re-enable third-person camera on vehicle exit.
-
-### 3. "Hat Tip" emote distorts character mesh
-When playing the "Hat Tip" emote animation, at the end of the animation the character ROI gets visually distorted (smooshed/flattened). The deformation does not reset until the player starts moving. Likely cause: the final keyframe of the animation applies a non-uniform scale or collapsed transform to the bone ROIs, and the emote completion code (`m_emoteActive = false`) stops applying animation but doesn't reset the bone transforms to their idle/default poses.
-
-### 4. Building enter/return loses character ROI
-When entering a building (which triggers a world transition) and returning to the Isle world, the character ROI is gone completely. The `OnWorldDisabled`/`OnWorldEnabled` cycle clears the animation caches and resets state, but the ROI reference (`m_playerROI`) becomes stale. The `OnActorEnter` hook may not fire again after the world re-enable, or the ROI may need to be re-acquired and visibility re-set.
+### 4. Building enter/return loses character ROI — FIXED
+**Root cause:** `OnWorldDisabled()` set `m_active = false`. `OnWorldEnabled()` never restored it. `Enter()` may not be called again after world re-enable.
+**Fix:** `OnWorldEnabled()` now calls `ReinitForCharacter()` after clearing stale caches — re-acquires ROI, rebuilds caches, sets up camera.
 
 ---
 
@@ -153,7 +154,7 @@ Adding `LegoAnimActor` to `IslePathActor`'s class hierarchy would change vtable 
 4. **Third-person on foot**: Walk around — player visible from behind, selected walk animation plays, idle after 2.5s
 5. **Animation switching**: Change walk/idle animation via WASM exports — local player model updates
 6. **Emotes**: Trigger emote while stationary — plays on local model, interrupted by movement
-7. **Vehicle transitions**: Enter vehicle — camera offset active. Exit vehicle — walk animation resumes (**currently broken, see Known Issues #2**)
+7. **Vehicle transitions**: Enter small vehicle — ride animation plays, dashboard hidden. Exit — walk animation resumes with third-person camera
 8. **Toggle**: `mp_toggle_third_person` switches between first/third person — first-person restores original behavior
 9. **Without network**: Camera works with multiplayer extension enabled but not connected
-10. **Building transitions**: Enter/leave buildings without losing character ROI (**currently broken, see Known Issues #3**)
+10. **Building transitions**: Enter/leave buildings — character ROI preserved with third-person camera active on return

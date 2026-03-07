@@ -222,6 +222,16 @@ void NetworkManager::BroadcastLocalState()
 	msg.vehicleType = DetectLocalVehicleType();
 	SDL_memcpy(msg.position, pos, sizeof(msg.position));
 	SDL_memcpy(msg.direction, dir, sizeof(msg.direction));
+
+	// Third-person camera: ROI direction is opposite to actual movement direction
+	// (ShouldInvertMovement preserves TurnAround convention). Negate so remote
+	// players receive the true movement-facing direction.
+	if (m_thirdPersonCamera.IsActive()) {
+		msg.direction[0] = -msg.direction[0];
+		msg.direction[1] = -msg.direction[1];
+		msg.direction[2] = -msg.direction[2];
+	}
+
 	SDL_memcpy(msg.up, up, sizeof(msg.up));
 	msg.speed = speed;
 	msg.walkAnimId = m_localWalkAnimId;

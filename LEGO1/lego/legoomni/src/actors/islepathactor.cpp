@@ -106,8 +106,6 @@ void IslePathActor::Enter()
 // FUNCTION: BETA10 0x1003669f
 void IslePathActor::Exit()
 {
-	Extension<MultiplayerExt>::Call(HandleActorExit, this);
-
 	SetActorState(c_initial);
 	m_roi->SetVisibility(TRUE);
 
@@ -161,6 +159,8 @@ void IslePathActor::Exit()
 	TurnAround();
 	TransformPointOfView();
 	ResetViewVelocity();
+
+	Extension<MultiplayerExt>::Call(HandleActorExit, this);
 }
 
 // GLOBAL: LEGO1 0x10102b28
