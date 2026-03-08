@@ -23,7 +23,8 @@ class RaceCar;
 class SkateBoard;
 class TowTrack;
 
-namespace Multiplayer {
+namespace Multiplayer
+{
 class WorldStateSync;
 }
 
