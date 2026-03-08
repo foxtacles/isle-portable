@@ -34,7 +34,7 @@ static void FlipROIDirection(LegoROI* p_roi)
 }
 
 ThirdPersonCamera::ThirdPersonCamera()
-	: m_enabled(false), m_active(false), m_roiUnflipped(false), m_playerROI(nullptr),
+	: m_enabled(false), m_active(false), m_needsDirectionFlip(false), m_playerROI(nullptr),
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr),
 	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true}), m_showNameBubble(true),
 	  m_orbitYaw(DEFAULT_ORBIT_YAW), m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
@@ -67,7 +67,6 @@ void ThirdPersonCamera::Disable()
 
 		if (turnAroundROI) {
 			FlipROIDirection(turnAroundROI);
-			m_roiUnflipped = true;
 		}
 
 		m_playerROI->SetVisibility(FALSE);
@@ -85,6 +84,7 @@ void ThirdPersonCamera::Disable()
 	}
 
 	m_active = false;
+	m_needsDirectionFlip = false;
 	DestroyNameBubble();
 	DestroyDisplayClone();
 	m_animator.ClearRideAnimation();
@@ -103,9 +103,6 @@ void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
 	// Always track vehicle type so OnActorExit can handle exits
 	// even if Enable() was called after entering the vehicle.
 	m_animator.SetCurrentVehicleType(DetectVehicleType(userActor));
-
-	// Enter() calls TurnAround(), so any previous undo is superseded.
-	m_roiUnflipped = false;
 
 	if (!m_enabled) {
 		return;
@@ -153,7 +150,6 @@ void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
 	if (!EnsureDisplayROI()) {
 		return;
 	}
-	m_roiUnflipped = false;
 	m_active = true;
 
 	m_playerROI->SetVisibility(TRUE);
@@ -212,6 +208,9 @@ void ThirdPersonCamera::OnActorExit(IslePathActor* p_actor)
 
 void ThirdPersonCamera::OnCamAnimEnd(LegoPathActor* p_actor)
 {
+	// Cam anim handles its own ROI flip; cancel any pending Tick correction.
+	m_needsDirectionFlip = false;
+
 	if (!m_active) {
 		return;
 	}
@@ -237,6 +236,22 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 
 	if (!m_playerROI) {
 		return;
+	}
+
+	// After a world transition, SpawnPlayer → PlaceActor leaves the ROI in
+	// standard convention (z = visual forward).  The 3rd-person camera needs
+	// backward-z.  OnWorldEnabled set the flag; now that PlaceActor has
+	// completed, flip the ROI and re-setup the camera.
+	if (m_needsDirectionFlip) {
+		m_needsDirectionFlip = false;
+		LegoPathActor* actor = UserActor();
+		if (actor) {
+			LegoROI* roi = actor->GetROI();
+			if (roi) {
+				FlipROIDirection(roi);
+			}
+			SetupCamera(actor);
+		}
 	}
 
 	// Update orbit camera position each frame so it tracks the player
@@ -354,6 +369,11 @@ void ThirdPersonCamera::OnWorldEnabled(LegoWorld* p_world)
 	// Animation presenters may have been recreated.
 	m_animator.ClearAll();
 
+	// ReinitForCharacter runs BEFORE SpawnPlayer/PlaceActor, so its camera
+	// setup uses the ROI direction from the previous session.  Set the flag
+	// so that the first Tick after PlaceActor corrects the direction.
+	m_needsDirectionFlip = true;
+
 	ReinitForCharacter();
 }
 
@@ -364,7 +384,7 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	}
 
 	m_active = false;
-	m_roiUnflipped = false;
+	m_needsDirectionFlip = false;
 	m_playerROI = nullptr;
 	DestroyNameBubble();
 	DestroyDisplayClone();
@@ -655,6 +675,7 @@ void ThirdPersonCamera::ReinitForCharacter()
 	// Large vehicles and helicopter: stay first-person
 	if (vehicleType == VEHICLE_HELICOPTER || (vehicleType != VEHICLE_NONE && IsLargeVehicle(vehicleType))) {
 		m_active = false;
+		m_needsDirectionFlip = false;
 		return;
 	}
 
@@ -681,7 +702,7 @@ void ThirdPersonCamera::ReinitForCharacter()
 			if (vehicleROI) {
 				FlipROIDirection(vehicleROI);
 			}
-			m_roiUnflipped = false;
+			m_needsDirectionFlip = false;
 		}
 
 		VideoManager()->Get3DManager()->Remove(*m_playerROI);
@@ -700,14 +721,13 @@ void ThirdPersonCamera::ReinitForCharacter()
 		return;
 	}
 
-	// Re-apply TurnAround if we undid it in Disable().
-	// Only set the local matrix here; the subsequent Add() will propagate world data.
-	// Flip the native ROI (not the display clone) since Tick() syncs the
-	// clone's transform from it.
-	if (m_roiUnflipped) {
-		FlipROIDirection(roi);
-		m_roiUnflipped = false;
-	}
+	// Always flip the native ROI direction to backward-z convention.
+	// This handles both the Disable→Enable cycle (Disable flipped to forward-z)
+	// and enabling after a 1st-person spawn (PlaceActor left forward-z).
+	// For world transitions where SpawnPlayer/PlaceActor runs AFTER this,
+	// m_needsDirectionFlip (set by OnWorldEnabled) triggers a second correction
+	// in Tick once PlaceActor has completed.
+	FlipROIDirection(roi);
 
 	m_playerROI->SetVisibility(TRUE);
 
