@@ -54,6 +54,12 @@ public:
 	// Returns TRUE if the name belongs to a multiplayer clone (entity-less ROI).
 	static MxBool IsClonedCharacter(const char* p_name);
 
+	// Called before a save file is loaded. Captures current sky/light state.
+	static void HandleBeforeSaveLoad();
+
+	// Called after a save file is loaded. Re-syncs world state with multiplayer peers.
+	static void HandleSaveLoaded();
+
 	// Returns true if the multiplayer connection was rejected (e.g. room full).
 	static MxBool CheckRejected();
 
@@ -79,6 +85,8 @@ constexpr auto HandleActorExit = &MultiplayerExt::HandleActorExit;
 constexpr auto HandleCamAnimEnd = &MultiplayerExt::HandleCamAnimEnd;
 constexpr auto ShouldInvertMovement = &MultiplayerExt::ShouldInvertMovement;
 constexpr auto IsClonedCharacter = &MultiplayerExt::IsClonedCharacter;
+constexpr auto HandleBeforeSaveLoad = &MultiplayerExt::HandleBeforeSaveLoad;
+constexpr auto HandleSaveLoaded = &MultiplayerExt::HandleSaveLoaded;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 #else
 constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
@@ -91,6 +99,8 @@ constexpr decltype(&MultiplayerExt::HandleActorExit) HandleActorExit = nullptr;
 constexpr decltype(&MultiplayerExt::HandleCamAnimEnd) HandleCamAnimEnd = nullptr;
 constexpr decltype(&MultiplayerExt::ShouldInvertMovement) ShouldInvertMovement = nullptr;
 constexpr decltype(&MultiplayerExt::IsClonedCharacter) IsClonedCharacter = nullptr;
+constexpr decltype(&MultiplayerExt::HandleBeforeSaveLoad) HandleBeforeSaveLoad = nullptr;
+constexpr decltype(&MultiplayerExt::HandleSaveLoaded) HandleSaveLoaded = nullptr;
 constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 #endif
 

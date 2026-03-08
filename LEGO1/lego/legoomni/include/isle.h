@@ -23,6 +23,10 @@ class RaceCar;
 class SkateBoard;
 class TowTrack;
 
+namespace Multiplayer {
+class WorldStateSync;
+}
+
 // VTABLE: LEGO1 0x100d7028
 // VTABLE: BETA10 0x101b9d40
 // SIZE 0x26c
@@ -164,6 +168,7 @@ public:
 	void SwitchToInfocenter();
 
 	friend class Act1State;
+	friend class Multiplayer::WorldStateSync;
 
 	// SYNTHETIC: LEGO1 0x10030a30
 	// Isle::`scalar deleting destructor'

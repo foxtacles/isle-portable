@@ -251,6 +251,20 @@ MxBool MultiplayerExt::HandleSkyLightControl(MxU32 p_controlId)
 	return s_networkManager->HandleSkyLightMutation(entityType, changeType);
 }
 
+void MultiplayerExt::HandleBeforeSaveLoad()
+{
+	if (s_networkManager) {
+		s_networkManager->OnBeforeSaveLoad();
+	}
+}
+
+void MultiplayerExt::HandleSaveLoaded()
+{
+	if (s_networkManager) {
+		s_networkManager->OnSaveLoaded();
+	}
+}
+
 void MultiplayerExt::HandleActorEnter(IslePathActor* p_actor)
 {
 	if (s_networkManager) {

@@ -67,6 +67,8 @@ public:
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
+	void OnBeforeSaveLoad();
+	void OnSaveLoaded();
 
 	ThirdPersonCamera& GetThirdPersonCamera() { return m_thirdPersonCamera; }
 

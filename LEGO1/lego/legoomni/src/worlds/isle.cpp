@@ -297,6 +297,10 @@ void Isle::ReadyWorld()
 MxLong Isle::HandleControl(LegoControlManagerNotificationParam& p_param)
 {
 	if (p_param.m_enabledChild == 1) {
+		if (Extension<MultiplayerExt>::Call(HandleSkyLightControl, (MxU32) p_param.m_clickedObjectId).value_or(FALSE)) {
+			return 1;
+		}
+
 		MxDSAction action;
 
 		switch (p_param.m_clickedObjectId) {
@@ -402,36 +406,13 @@ MxLong Isle::HandleControl(LegoControlManagerNotificationParam& p_param)
 			}
 			break;
 		case IsleScript::c_Observe_Sun_Ctl:
+			GameState()->GetBackgroundColor()->ToggleDayNight(TRUE);
+			break;
 		case IsleScript::c_Observe_Moon_Ctl:
+			GameState()->GetBackgroundColor()->ToggleDayNight(FALSE);
+			break;
 		case IsleScript::c_Observe_SkyColor_Ctl:
-		case IsleScript::c_Observe_GlobeLArrow_Ctl:
-		case IsleScript::c_Observe_GlobeRArrow_Ctl:
-			if (!Extension<MultiplayerExt>::Call(
-					 HandleSkyLightControl, (MxU32) p_param.m_clickedObjectId
-			)
-					 .value_or(FALSE)) {
-				switch (p_param.m_clickedObjectId) {
-				case IsleScript::c_Observe_Sun_Ctl:
-					GameState()->GetBackgroundColor()->ToggleDayNight(TRUE);
-					break;
-				case IsleScript::c_Observe_Moon_Ctl:
-					GameState()->GetBackgroundColor()->ToggleDayNight(FALSE);
-					break;
-				case IsleScript::c_Observe_SkyColor_Ctl:
-					GameState()->GetBackgroundColor()->ToggleSkyColor();
-					break;
-				case IsleScript::c_Observe_GlobeLArrow_Ctl:
-					UpdateLightPosition(-1);
-					break;
-				case IsleScript::c_Observe_GlobeRArrow_Ctl:
-					UpdateLightPosition(1);
-					break;
-				}
-			}
-			if (p_param.m_clickedObjectId == IsleScript::c_Observe_GlobeLArrow_Ctl ||
-				p_param.m_clickedObjectId == IsleScript::c_Observe_GlobeRArrow_Ctl) {
-				UpdateGlobe();
-			}
+			GameState()->GetBackgroundColor()->ToggleSkyColor();
 			break;
 		case IsleScript::c_Observe_LCab_Ctl:
 			action.SetAtomId(*g_isleScript);
@@ -440,6 +421,14 @@ MxLong Isle::HandleControl(LegoControlManagerNotificationParam& p_param)
 			Start(&action);
 			break;
 		case IsleScript::c_Observe_RCab_Ctl:
+			UpdateGlobe();
+			break;
+		case IsleScript::c_Observe_GlobeLArrow_Ctl:
+			UpdateLightPosition(-1);
+			UpdateGlobe();
+			break;
+		case IsleScript::c_Observe_GlobeRArrow_Ctl:
+			UpdateLightPosition(1);
 			UpdateGlobe();
 			break;
 		case IsleScript::c_Observe_Draw1_Ctl:
