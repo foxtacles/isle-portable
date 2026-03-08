@@ -305,6 +305,9 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 
 	float speed = userActor->GetWorldSpeed();
 	bool isMoving = SDL_fabsf(speed) > 0.01f;
+	if (m_animator.IsInMultiPartEmote()) {
+		isMoving = false;
+	}
 
 	m_animator.Tick(p_deltaTime, m_playerROI, isMoving);
 }
@@ -319,6 +322,16 @@ void ThirdPersonCamera::SetIdleAnimId(uint8_t p_idleAnimId)
 	m_animator.SetIdleAnimId(p_idleAnimId, m_active ? m_playerROI : nullptr);
 }
 
+bool ThirdPersonCamera::IsInMultiPartEmote() const
+{
+	return m_animator.IsInMultiPartEmote();
+}
+
+int8_t ThirdPersonCamera::GetFrozenEmoteId() const
+{
+	return m_animator.GetFrozenEmoteId();
+}
+
 void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 {
 	if (!m_active) {
@@ -330,7 +343,11 @@ void ThirdPersonCamera::TriggerEmote(uint8_t p_emoteId)
 		return;
 	}
 
-	m_animator.TriggerEmote(p_emoteId, m_playerROI, SDL_fabsf(userActor->GetWorldSpeed()) > 0.01f);
+	bool isMoving = SDL_fabsf(userActor->GetWorldSpeed()) > 0.01f;
+	if (m_animator.IsInMultiPartEmote()) {
+		isMoving = false;
+	}
+	m_animator.TriggerEmote(p_emoteId, m_playerROI, isMoving);
 }
 
 void ThirdPersonCamera::ApplyCustomizeChange(uint8_t p_changeType, uint8_t p_partIndex)

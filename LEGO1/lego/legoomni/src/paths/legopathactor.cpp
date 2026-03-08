@@ -265,6 +265,12 @@ MxS32 LegoPathActor::CalculateTransform(float p_time, Matrix4& p_transform)
 
 		m_worldSpeed = nav->GetLinearVel();
 
+		MxBool blockMovement = Extension<MultiplayerExt>::Call(ShouldBlockMovement, this).value_or(FALSE);
+		if (blockMovement) {
+			m_worldSpeed = 0.0f;
+			return 0;
+		}
+
 		MxBool invertDir = Extension<MultiplayerExt>::Call(ShouldInvertMovement, this).value_or(FALSE);
 		if (invertDir) {
 			dir *= -1.0f;
