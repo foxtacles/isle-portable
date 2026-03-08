@@ -2,14 +2,19 @@
 
 #include "legobuildingmanager.h"
 #include "legoentity.h"
+#include "legogamestate.h"
 #include "legomain.h"
 #include "legoplantmanager.h"
 #include "legoplants.h"
+#include "legoutils.h"
 #include "legoworld.h"
 #include "misc.h"
 #include "misc/legostorage.h"
+#include "mxvariable.h"
 
 #include <SDL3/SDL_stdinc.h>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 extern MxU8 g_counters[];
@@ -73,6 +78,29 @@ void WorldStateSync::HandleWorldSnapshot(const uint8_t* p_data, size_t p_length)
 
 	PlantManager()->Read(&memory);
 	BuildingManager()->Read(&memory);
+
+	// Read sky/light state appended after plant + building data.
+	LegoU32 memPos;
+	memory.GetPosition(memPos);
+	const uint8_t* extraData = snapshotData + memPos;
+	size_t remaining = header.dataLength - memPos;
+
+	if (remaining >= 4) {
+		int skyH = extraData[0];
+		int skyS = extraData[1];
+		int skyV = extraData[2];
+		int lightPos = extraData[3];
+
+		char skyBuffer[32];
+		sprintf(skyBuffer, "set %d %d %d", skyH, skyS, skyV);
+		GameState()->GetBackgroundColor()->SetValue(skyBuffer);
+		GameState()->GetBackgroundColor()->SetLightColor();
+
+		SetLightPosition(lightPos);
+		char lightBuffer[32];
+		sprintf(lightBuffer, "%d", lightPos);
+		VariableTable()->SetVariable("lightposition", lightBuffer);
+	}
 
 	// Read() updates data arrays but not entity positions; reload to refresh.
 	if (m_inIsleWorld) {
@@ -163,6 +191,23 @@ MxBool WorldStateSync::HandleEntityMutation(LegoEntity* p_entity, MxU8 p_changeT
 	}
 }
 
+MxBool WorldStateSync::HandleSkyLightMutation(uint8_t p_entityType, uint8_t p_changeType)
+{
+	if (!m_transport || !m_transport->IsConnected()) {
+		return FALSE;
+	}
+
+	if (m_isHost) {
+		ApplyWorldEvent(p_entityType, p_changeType, 0);
+		BroadcastWorldEvent(p_entityType, p_changeType, 0);
+	}
+	else {
+		SendWorldEventRequest(p_entityType, p_changeType, 0);
+	}
+
+	return TRUE;
+}
+
 // ---- Send helpers ----
 
 void WorldStateSync::SendSnapshotRequest()
@@ -181,7 +226,7 @@ void WorldStateSync::SendWorldSnapshot(uint32_t p_targetPeerId)
 		return;
 	}
 
-	// Serialize plant + building state (~1133 bytes max, use 4096 for safety).
+	// Serialize plant + building + sky/light state (~1149 bytes max, use 4096 for safety).
 	uint8_t stateBuffer[4096];
 	LegoMemory memory(stateBuffer, sizeof(stateBuffer));
 
@@ -190,6 +235,20 @@ void WorldStateSync::SendWorldSnapshot(uint32_t p_targetPeerId)
 
 	LegoU32 dataLength;
 	memory.GetPosition(dataLength);
+
+	// Append sky color HSV (parse from "set H S V" string) and light position.
+	int skyH = 56, skyS = 54, skyV = 68; // defaults matching "set 56 54 68"
+	const char* bgValue = GameState()->GetBackgroundColor()->GetValue()->GetData();
+	if (bgValue) {
+		sscanf(bgValue, "set %d %d %d", &skyH, &skyS, &skyV);
+	}
+
+	int lightPos = atoi(VariableTable()->GetVariable("lightposition"));
+
+	stateBuffer[dataLength++] = (uint8_t) skyH;
+	stateBuffer[dataLength++] = (uint8_t) skyS;
+	stateBuffer[dataLength++] = (uint8_t) skyV;
+	stateBuffer[dataLength++] = (uint8_t) lightPos;
 
 	WorldSnapshotMsg msg{};
 	msg.header = {MSG_WORLD_SNAPSHOT, m_localPeerId, m_sequence++};
@@ -383,6 +442,29 @@ void WorldStateSync::ApplyWorldEvent(uint8_t p_entityType, uint8_t p_changeType,
 				// Variant switching is config-dependent, color N/A for buildings
 				break;
 			}
+		}
+	}
+	else if (p_entityType == ENTITY_SKY) {
+		switch (p_changeType) {
+		case SKY_TOGGLE_COLOR:
+			GameState()->GetBackgroundColor()->ToggleSkyColor();
+			break;
+		case SKY_DAY:
+			GameState()->GetBackgroundColor()->ToggleDayNight(TRUE);
+			break;
+		case SKY_NIGHT:
+			GameState()->GetBackgroundColor()->ToggleDayNight(FALSE);
+			break;
+		}
+	}
+	else if (p_entityType == ENTITY_LIGHT) {
+		switch (p_changeType) {
+		case LIGHT_INCREMENT:
+			UpdateLightPosition(1);
+			break;
+		case LIGHT_DECREMENT:
+			UpdateLightPosition(-1);
+			break;
 		}
 	}
 }

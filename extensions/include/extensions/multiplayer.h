@@ -33,6 +33,10 @@ public:
 	// Returns TRUE if the click should be suppressed locally (non-host).
 	static MxBool HandleEntityNotify(LegoEntity* p_entity);
 
+	// Intercepts observatory sky/light controls for multiplayer routing.
+	// Returns TRUE if the local action should be suppressed (non-host).
+	static MxBool HandleSkyLightControl(MxU32 p_controlId);
+
 	// Handles clicks on entity-less ROIs (remote players, display actor overrides).
 	static MxBool HandleROIClick(LegoROI* p_rootROI, LegoEventNotificationParam& p_param);
 
@@ -68,6 +72,7 @@ LEGO1_EXPORT bool IsMultiplayerRejected();
 constexpr auto HandleCreate = &MultiplayerExt::HandleCreate;
 constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
 constexpr auto HandleEntityNotify = &MultiplayerExt::HandleEntityNotify;
+constexpr auto HandleSkyLightControl = &MultiplayerExt::HandleSkyLightControl;
 constexpr auto HandleROIClick = &MultiplayerExt::HandleROIClick;
 constexpr auto HandleActorEnter = &MultiplayerExt::HandleActorEnter;
 constexpr auto HandleActorExit = &MultiplayerExt::HandleActorExit;
@@ -79,6 +84,7 @@ constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
 constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
 constexpr decltype(&MultiplayerExt::HandleEntityNotify) HandleEntityNotify = nullptr;
+constexpr decltype(&MultiplayerExt::HandleSkyLightControl) HandleSkyLightControl = nullptr;
 constexpr decltype(&MultiplayerExt::HandleROIClick) HandleROIClick = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorEnter) HandleActorEnter = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorExit) HandleActorExit = nullptr;

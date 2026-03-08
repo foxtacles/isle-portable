@@ -197,6 +197,11 @@ MxBool NetworkManager::HandleEntityMutation(LegoEntity* p_entity, MxU8 p_changeT
 	return m_worldSync.HandleEntityMutation(p_entity, p_changeType);
 }
 
+MxBool NetworkManager::HandleSkyLightMutation(uint8_t p_entityType, uint8_t p_changeType)
+{
+	return m_worldSync.HandleSkyLightMutation(p_entityType, p_changeType);
+}
+
 void NetworkManager::ProcessPendingRequests()
 {
 	if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {

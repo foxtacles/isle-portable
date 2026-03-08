@@ -74,6 +74,10 @@ public:
 	// Returns TRUE if the mutation should be suppressed locally (non-host).
 	MxBool HandleEntityMutation(LegoEntity* p_entity, MxU8 p_changeType);
 
+	// Called from multiplayer extension when a sky/light control is used.
+	// Returns TRUE if the local action should be suppressed (non-host).
+	MxBool HandleSkyLightMutation(uint8_t p_entityType, uint8_t p_changeType);
+
 	bool IsHost() const { return m_localPeerId != 0 && m_localPeerId == m_hostPeerId; }
 	uint32_t GetLocalPeerId() const { return m_localPeerId; }
 
