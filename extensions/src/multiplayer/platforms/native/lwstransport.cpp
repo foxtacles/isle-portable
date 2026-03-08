@@ -37,7 +37,7 @@ LwsTransport::~LwsTransport()
 
 void LwsTransport::Connect(const char* p_roomId)
 {
-	if (m_connected) {
+	if (m_context) {
 		Disconnect();
 	}
 
