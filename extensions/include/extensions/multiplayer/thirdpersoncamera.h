@@ -61,7 +61,11 @@ public:
 private:
 	// Orbit camera helpers
 	void ComputeOrbitVectors(Mx3DPointFloat& p_at, Mx3DPointFloat& p_dir, Mx3DPointFloat& p_up) const;
-	void UpdateOrbitCamera();
+	void ApplyOrbitCamera();
+	void ResetOrbitState();
+	void ClampPitch();
+	void ClampDistance();
+
 	using AnimCache = AnimUtils::AnimCache;
 
 	AnimCache* GetOrBuildAnimCache(const char* p_animName);

@@ -99,11 +99,7 @@ void ThirdPersonCamera::Disable()
 	m_animCacheMap.clear();
 	ClearAnimCaches();
 
-	// Reset orbit to defaults
-	m_orbitYaw = DEFAULT_ORBIT_YAW;
-	m_orbitPitch = DEFAULT_ORBIT_PITCH;
-	m_orbitDistance = DEFAULT_ORBIT_DISTANCE;
-	m_touch = {};
+	ResetOrbitState();
 }
 
 void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
@@ -262,7 +258,7 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 	}
 
 	// Update orbit camera position each frame so it tracks the player
-	UpdateOrbitCamera();
+	ApplyOrbitCamera();
 
 	// Small vehicle with ride animation (like RemotePlayer)
 	if (m_currentVehicleType != VEHICLE_NONE) {
@@ -556,7 +552,6 @@ void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
 
 	Mx3DPointFloat at, dir, up;
 	ComputeOrbitVectors(at, dir, up);
-
 	world->GetCameraController()->SetWorldTransform(at, dir, up);
 	p_actor->TransformPointOfView();
 }
@@ -692,31 +687,26 @@ void ThirdPersonCamera::ComputeOrbitVectors(
 {
 	// Convert spherical coordinates to camera offset in entity-local space.
 	// Entity local Z+ is "behind" (after TurnAround), which is where yaw=0 points.
-	float cosPitch = cosf(m_orbitPitch);
-	float sinPitch = sinf(m_orbitPitch);
+	float cosP = cosf(m_orbitPitch);
+	float sinP = sinf(m_orbitPitch);
+	float sinY = sinf(m_orbitYaw);
+	float cosY = cosf(m_orbitYaw);
 
-	float x = m_orbitDistance * sinf(m_orbitYaw) * cosPitch;
-	float y = ORBIT_TARGET_HEIGHT + m_orbitDistance * sinPitch;
-	float z = m_orbitDistance * cosf(m_orbitYaw) * cosPitch;
+	p_at = Mx3DPointFloat(
+		m_orbitDistance * sinY * cosP,
+		ORBIT_TARGET_HEIGHT + m_orbitDistance * sinP,
+		m_orbitDistance * cosY * cosP
+	);
 
-	p_at = Mx3DPointFloat(x, y, z);
-
-	// Direction: from camera position toward the orbit center (pivot point)
-	float dx = -x;
-	float dy = ORBIT_TARGET_HEIGHT - y;
-	float dz = -z;
-	float len = sqrtf(dx * dx + dy * dy + dz * dz);
-	if (len > 0.0001f) {
-		p_dir = Mx3DPointFloat(dx / len, dy / len, dz / len);
-	}
-	else {
-		p_dir = Mx3DPointFloat(0.0f, 0.0f, -1.0f);
-	}
+	// Direction points from camera toward the pivot. Since the camera sits on
+	// a sphere of radius m_orbitDistance, the unit direction is just the
+	// negated spherical unit vector.
+	p_dir = Mx3DPointFloat(-sinY * cosP, -sinP, -cosY * cosP);
 
 	p_up = Mx3DPointFloat(0.0f, 1.0f, 0.0f);
 }
 
-void ThirdPersonCamera::UpdateOrbitCamera()
+void ThirdPersonCamera::ApplyOrbitCamera()
 {
 	LegoPathActor* actor = UserActor();
 	LegoWorld* world = CurrentWorld();
@@ -730,29 +720,47 @@ void ThirdPersonCamera::UpdateOrbitCamera()
 	actor->TransformPointOfView();
 }
 
+void ThirdPersonCamera::ResetOrbitState()
+{
+	m_orbitYaw = DEFAULT_ORBIT_YAW;
+	m_orbitPitch = DEFAULT_ORBIT_PITCH;
+	m_orbitDistance = DEFAULT_ORBIT_DISTANCE;
+	m_touch = {};
+}
+
+void ThirdPersonCamera::ClampPitch()
+{
+	if (m_orbitPitch < MIN_PITCH) {
+		m_orbitPitch = MIN_PITCH;
+	}
+	if (m_orbitPitch > MAX_PITCH) {
+		m_orbitPitch = MAX_PITCH;
+	}
+}
+
+void ThirdPersonCamera::ClampDistance()
+{
+	if (m_orbitDistance < MIN_DISTANCE) {
+		m_orbitDistance = MIN_DISTANCE;
+	}
+	if (m_orbitDistance > MAX_DISTANCE) {
+		m_orbitDistance = MAX_DISTANCE;
+	}
+}
+
 void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 {
 	switch (p_event->type) {
 	case SDL_EVENT_MOUSE_WHEEL:
 		m_orbitDistance -= p_event->wheel.y * 0.5f;
-		if (m_orbitDistance < MIN_DISTANCE) {
-			m_orbitDistance = MIN_DISTANCE;
-		}
-		if (m_orbitDistance > MAX_DISTANCE) {
-			m_orbitDistance = MAX_DISTANCE;
-		}
+		ClampDistance();
 		break;
 
 	case SDL_EVENT_MOUSE_MOTION:
 		if (p_event->motion.state & SDL_BUTTON_RMASK) {
-			m_orbitYaw -= p_event->motion.xrel * 0.005f;
+			m_orbitYaw += p_event->motion.xrel * 0.005f;
 			m_orbitPitch += p_event->motion.yrel * 0.005f;
-			if (m_orbitPitch < MIN_PITCH) {
-				m_orbitPitch = MIN_PITCH;
-			}
-			if (m_orbitPitch > MAX_PITCH) {
-				m_orbitPitch = MAX_PITCH;
-			}
+			ClampPitch();
 		}
 		break;
 
@@ -800,12 +808,7 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 			if (m_touch.initialPinchDist > 0.001f) {
 				float pinchDelta = m_touch.initialPinchDist - newDist;
 				m_orbitDistance += pinchDelta * 15.0f;
-				if (m_orbitDistance < MIN_DISTANCE) {
-					m_orbitDistance = MIN_DISTANCE;
-				}
-				if (m_orbitDistance > MAX_DISTANCE) {
-					m_orbitDistance = MAX_DISTANCE;
-				}
+				ClampDistance();
 				m_touch.initialPinchDist = newDist;
 			}
 
@@ -814,12 +817,7 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 			float moveY = m_touch.y[idx] - oldY;
 			m_orbitYaw -= moveX * 2.0f;
 			m_orbitPitch += moveY * 2.0f;
-			if (m_orbitPitch < MIN_PITCH) {
-				m_orbitPitch = MIN_PITCH;
-			}
-			if (m_orbitPitch > MAX_PITCH) {
-				m_orbitPitch = MAX_PITCH;
-			}
+			ClampPitch();
 		}
 		break;
 	}
