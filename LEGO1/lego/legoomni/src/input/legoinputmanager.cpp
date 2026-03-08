@@ -323,6 +323,12 @@ MxBool LegoInputManager::ProcessOneEvent(LegoEventNotificationParam& p_param)
 	}
 	else {
 		if (!Lego()->IsPaused()) {
+			if ((p_param.GetModifier() & LegoEventNotificationParam::c_rButtonState) &&
+				!(p_param.GetModifier() & LegoEventNotificationParam::c_lButtonState) &&
+				Extension<MultiplayerExt>::Call(IsThirdPersonCameraActive).value_or(FALSE)) {
+				return FALSE;
+			}
+
 			processRoi = TRUE;
 
 			if (m_unk0x335 != 0) {
@@ -634,7 +640,7 @@ MxBool LegoInputManager::HandleTouchEvent(SDL_Event* p_event, TouchScheme p_touc
 {
 	static SDL_FingerID g_finger = (SDL_FingerID) 0;
 
-	if (Extension<MultiplayerExt>::Call(IsTouchInputSuppressed).value_or(FALSE)) {
+	if (Extension<MultiplayerExt>::Call(IsThirdPersonCameraActive).value_or(FALSE)) {
 		g_finger = 0;
 		m_touchVirtualThumb = {0, 0};
 		m_touchFlags.clear();
