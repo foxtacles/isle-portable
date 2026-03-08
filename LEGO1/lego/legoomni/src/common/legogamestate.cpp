@@ -460,6 +460,7 @@ MxResult LegoGameState::Load(MxULong p_slot)
 
 	result = SUCCESS;
 	m_isDirty = FALSE;
+
 	Extension<MultiplayerExt>::Call(HandleSaveLoaded);
 
 done:
