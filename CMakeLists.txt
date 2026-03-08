@@ -549,6 +549,12 @@ if (ISLE_EXTENSIONS)
       extensions/src/multiplayer/platforms/emscripten/websockettransport.cpp
       extensions/src/multiplayer/platforms/emscripten/callbacks.cpp
     )
+  else()
+    target_sources(lego1 PRIVATE
+      extensions/src/multiplayer/platforms/native/lwstransport.cpp
+      extensions/src/multiplayer/platforms/native/nativecallbacks.cpp
+    )
+    target_link_libraries(lego1 PRIVATE websockets)
   endif()
 endif()
 

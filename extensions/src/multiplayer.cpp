@@ -22,6 +22,9 @@
 #include "extensions/multiplayer/platforms/emscripten/websockettransport.h"
 
 #include <emscripten.h>
+#else
+#include "extensions/multiplayer/platforms/native/lwstransport.h"
+#include "extensions/multiplayer/platforms/native/nativecallbacks.h"
 #endif
 
 using namespace Extensions;
@@ -52,6 +55,10 @@ void MultiplayerExt::Initialize()
 #ifdef __EMSCRIPTEN__
 	s_transport = new Multiplayer::WebSocketTransport(relayUrl);
 	s_callbacks = new Multiplayer::EmscriptenCallbacks();
+#else
+	s_transport = new Multiplayer::LwsTransport(relayUrl);
+	s_callbacks = new Multiplayer::NativeCallbacks();
+#endif
 
 	s_networkManager = new Multiplayer::NetworkManager();
 	s_networkManager->Initialize(s_transport, s_callbacks);
@@ -70,7 +77,6 @@ void MultiplayerExt::Initialize()
 	if (!relayUrl.empty() && !room.empty()) {
 		s_networkManager->Connect(room.c_str());
 	}
-#endif
 }
 
 void MultiplayerExt::HandleCreate()

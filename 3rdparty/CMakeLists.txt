@@ -72,3 +72,25 @@ if(DOWNLOAD_DEPENDENCIES)
     set_property(TARGET libweaver PROPERTY CXX_STANDARD_REQUIRED ON)
 endif()
 
+if(ISLE_EXTENSIONS AND NOT EMSCRIPTEN)
+    if(DOWNLOAD_DEPENDENCIES)
+        include(FetchContent)
+        FetchContent_Declare(
+            libwebsockets
+            GIT_REPOSITORY "https://github.com/warmcat/libwebsockets.git"
+            GIT_TAG "v4.5-stable"
+            EXCLUDE_FROM_ALL
+        )
+        block()
+            set(LWS_WITH_SSL OFF CACHE BOOL "" FORCE)
+            set(LWS_WITH_SHARED OFF CACHE BOOL "" FORCE)
+            set(LWS_WITH_STATIC ON CACHE BOOL "" FORCE)
+            set(LWS_WITHOUT_TESTAPPS ON CACHE BOOL "" FORCE)
+            set(LWS_WITH_MINIMAL_EXAMPLES OFF CACHE BOOL "" FORCE)
+            FetchContent_MakeAvailable(libwebsockets)
+        endblock()
+    else()
+        find_package(Libwebsockets REQUIRED)
+    endif()
+endif()
+
