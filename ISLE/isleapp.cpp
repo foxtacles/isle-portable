@@ -877,6 +877,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
 		}
 	}
 
+	Extension<MultiplayerExt>::Call(HandleSDLEvent, event);
+
 	return SDL_APP_CONTINUE;
 }
 

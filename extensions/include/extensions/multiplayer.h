@@ -3,6 +3,7 @@
 #include "extensions/extensions.h"
 #include "mxtypes.h"
 
+#include <SDL3/SDL_events.h>
 #include <map>
 #include <string>
 
@@ -53,6 +54,9 @@ public:
 	// Returns true if the multiplayer connection was rejected (e.g. room full).
 	static MxBool CheckRejected();
 
+	// Forwards SDL events to the third-person camera for orbit controls.
+	static void HandleSDLEvent(SDL_Event* p_event);
+
 	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
 
@@ -75,6 +79,7 @@ constexpr auto HandleCamAnimEnd = &MultiplayerExt::HandleCamAnimEnd;
 constexpr auto ShouldInvertMovement = &MultiplayerExt::ShouldInvertMovement;
 constexpr auto IsClonedCharacter = &MultiplayerExt::IsClonedCharacter;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
+constexpr auto HandleSDLEvent = &MultiplayerExt::HandleSDLEvent;
 #else
 constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
 constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
@@ -86,6 +91,7 @@ constexpr decltype(&MultiplayerExt::HandleCamAnimEnd) HandleCamAnimEnd = nullptr
 constexpr decltype(&MultiplayerExt::ShouldInvertMovement) ShouldInvertMovement = nullptr;
 constexpr decltype(&MultiplayerExt::IsClonedCharacter) IsClonedCharacter = nullptr;
 constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
+constexpr decltype(&MultiplayerExt::HandleSDLEvent) HandleSDLEvent = nullptr;
 #endif
 
 }; // namespace Extensions
