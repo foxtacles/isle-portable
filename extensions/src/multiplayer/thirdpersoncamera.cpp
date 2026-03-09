@@ -5,6 +5,7 @@
 #include "extensions/multiplayer/charactercloner.h"
 #include "extensions/multiplayer/charactercustomizer.h"
 #include "islepathactor.h"
+#include "legoanimationmanager.h"
 #include "legocameracontroller.h"
 #include "legocharactermanager.h"
 #include "legovideomanager.h"
@@ -268,8 +269,15 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 		}
 	}
 
-	// Update orbit camera position each frame so it tracks the player
-	ApplyOrbitCamera();
+	// While a cam anim is running, it controls the camera and ViewROI.
+	// Calling ApplyOrbitCamera would fight the cam anim each frame and,
+	// critically, if the cam anim is interrupted (space bar), its end
+	// handler reads ViewROI position to place the actor.  Our orbit
+	// camera position (elevated, behind player) would cause the actor
+	// to be placed in the air.
+	if (!AnimationManager() || !AnimationManager()->m_animRunning) {
+		ApplyOrbitCamera();
+	}
 
 	m_animator.UpdateNameBubble(m_playerROI);
 
