@@ -110,13 +110,13 @@ void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
 	}
 
 	// During a world transition with 3rd-person active, Enter() just called
-	// TransformPointOfView which set a 1st-person camera.  Override it with
-	// the orbit camera to prevent a visible flash.  The ROI position is stale
-	// (PlaceActor hasn't run yet), but the direction is correct (Enter's
-	// TurnAround set backward-z).  Tick will correct position and direction
-	// after PlaceActor completes.
+	// TransformPointOfView which set a 1st-person camera.  The ROI position
+	// is stale (PlaceActor hasn't run yet).  Do NOT call SetupCamera here —
+	// the stale orbit camera view would stay frozen on screen during the
+	// ~500ms world load and appear as a wrong-direction flash.  Let the Tick
+	// correction (which runs after PlaceActor) set up the orbit camera at
+	// the correct position.
 	if (m_needsDirectionFlip && m_active) {
-		SetupCamera(userActor);
 		return;
 	}
 
@@ -406,7 +406,6 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	if (!p_world) {
 		return;
 	}
-
 	m_active = false;
 	m_roiUnflipped = false;
 	m_needsDirectionFlip = false;
