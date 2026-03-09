@@ -34,7 +34,7 @@ static void FlipROIDirection(LegoROI* p_roi)
 }
 
 ThirdPersonCamera::ThirdPersonCamera()
-	: m_enabled(false), m_active(false), m_needsDirectionFlip(false), m_playerROI(nullptr),
+	: m_enabled(false), m_active(false), m_roiUnflipped(false), m_needsDirectionFlip(false), m_playerROI(nullptr),
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr),
 	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true}), m_showNameBubble(true),
 	  m_orbitYaw(DEFAULT_ORBIT_YAW), m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
@@ -67,6 +67,7 @@ void ThirdPersonCamera::Disable()
 
 		if (turnAroundROI) {
 			FlipROIDirection(turnAroundROI);
+			m_roiUnflipped = true;
 		}
 
 		m_playerROI->SetVisibility(FALSE);
@@ -105,6 +106,17 @@ void ThirdPersonCamera::OnActorEnter(IslePathActor* p_actor)
 	m_animator.SetCurrentVehicleType(DetectVehicleType(userActor));
 
 	if (!m_enabled) {
+		return;
+	}
+
+	// During a world transition with 3rd-person active, Enter() just called
+	// TransformPointOfView which set a 1st-person camera.  Override it with
+	// the orbit camera to prevent a visible flash.  The ROI position is stale
+	// (PlaceActor hasn't run yet), but the direction is correct (Enter's
+	// TurnAround set backward-z).  Tick will correct position and direction
+	// after PlaceActor completes.
+	if (m_needsDirectionFlip && m_active) {
+		SetupCamera(userActor);
 		return;
 	}
 
@@ -210,6 +222,7 @@ void ThirdPersonCamera::OnCamAnimEnd(LegoPathActor* p_actor)
 {
 	// Cam anim handles its own ROI flip; cancel any pending Tick correction.
 	m_needsDirectionFlip = false;
+	m_roiUnflipped = false;
 
 	if (!m_active) {
 		return;
@@ -244,6 +257,7 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 	// completed, flip the ROI and re-setup the camera.
 	if (m_needsDirectionFlip) {
 		m_needsDirectionFlip = false;
+		m_roiUnflipped = false;
 		LegoPathActor* actor = UserActor();
 		if (actor) {
 			LegoROI* roi = actor->GetROI();
@@ -362,7 +376,17 @@ void ThirdPersonCamera::StopClickAnimation()
 
 void ThirdPersonCamera::OnWorldEnabled(LegoWorld* p_world)
 {
-	if (!m_enabled || !p_world) {
+	if (!p_world) {
+		return;
+	}
+
+	// PlaceActor will reset the ROI to forward-z.  Mark the ROI as
+	// needing a flip so that ReinitForCharacter (or Tick) corrects it.
+	// Cleared by Tick (m_needsDirectionFlip path), OnCamAnimEnd, or
+	// ReinitForCharacter when the flip is actually applied.
+	m_roiUnflipped = true;
+
+	if (!m_enabled) {
 		return;
 	}
 
@@ -384,6 +408,7 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	}
 
 	m_active = false;
+	m_roiUnflipped = false;
 	m_needsDirectionFlip = false;
 	m_playerROI = nullptr;
 	DestroyNameBubble();
@@ -702,6 +727,7 @@ void ThirdPersonCamera::ReinitForCharacter()
 			if (vehicleROI) {
 				FlipROIDirection(vehicleROI);
 			}
+			m_roiUnflipped = false;
 			m_needsDirectionFlip = false;
 		}
 
@@ -721,13 +747,15 @@ void ThirdPersonCamera::ReinitForCharacter()
 		return;
 	}
 
-	// Always flip the native ROI direction to backward-z convention.
-	// This handles both the Disable→Enable cycle (Disable flipped to forward-z)
-	// and enabling after a 1st-person spawn (PlaceActor left forward-z).
-	// For world transitions where SpawnPlayer/PlaceActor runs AFTER this,
-	// m_needsDirectionFlip (set by OnWorldEnabled) triggers a second correction
-	// in Tick once PlaceActor has completed.
-	FlipROIDirection(roi);
+	// Flip the ROI to backward-z convention when needed.
+	// m_roiUnflipped is set by Disable() (which flipped to forward-z) or by
+	// OnWorldEnabled() (PlaceActor will set forward-z).  When
+	// m_needsDirectionFlip is set, PlaceActor hasn't run yet and will
+	// overwrite any flip we do here, so skip it — Tick handles that case.
+	if (m_roiUnflipped && !m_needsDirectionFlip) {
+		FlipROIDirection(roi);
+		m_roiUnflipped = false;
+	}
 
 	m_playerROI->SetVisibility(TRUE);
 
@@ -740,6 +768,13 @@ void ThirdPersonCamera::ReinitForCharacter()
 	m_active = true;
 
 	m_animator.ApplyIdleFrame0(m_playerROI);
-	SetupCamera(userActor);
+
+	// When m_needsDirectionFlip is set, PlaceActor hasn't run yet and will
+	// overwrite the ROI transform.  Defer SetupCamera to Tick, which
+	// corrects the direction after PlaceActor completes.  This avoids a
+	// brief wrong-direction flash during world transitions.
+	if (!m_needsDirectionFlip) {
+		SetupCamera(userActor);
+	}
 	CreateNameBubble();
 }
