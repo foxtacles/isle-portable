@@ -11,15 +11,15 @@ exist throughout the codebase:
 | **forward-z**  | Toward visual forward    | `PlaceActor` (with `m_cameraFlag=TRUE`), cam anim end |
 | **backward-z** | Away from visual forward | After `Enter()`'s `TurnAround()`, vehicle ROIs         |
 
-Toggling between conventions is done by `FlipROIDirection` /
-`IslePathActor::TurnAround`: negate the z-axis and recompute the right vector.
+Toggling between conventions is done by `IslePathActor::TurnAround` (or the
+local `FlipMatrixDirection` helper): negate the z-axis and recompute the right
+vector.
 
 ## Design Choice: Forward-Z
 
 The third-person orbit camera uses **forward-z**, matching the convention that
 `PlaceActor` naturally produces. This eliminates the need to flip the ROI
-direction after every `PlaceActor` call and removes the `ShouldInvertMovement`
-movement inversion that would otherwise be needed.
+direction after every `PlaceActor` call.
 
 `ComputeOrbitVectors` treats local Z+ as the character's visual forward and
 places the camera at local −Z (behind the character), looking toward +Z.
@@ -58,7 +58,8 @@ in step 3, the stale view would freeze on screen during the ~500ms world load.
 The `m_pendingWorldTransition` flag handles this: set in `OnWorldEnabled`,
 it causes `OnActorEnter` and `ReinitForCharacter` to skip camera setup.
 Cleared in the first `Tick` after `PlaceActor`, where `ApplyOrbitCamera`
-naturally handles the camera.
+naturally handles the camera. The orbit state (yaw, pitch, distance) is also
+reset to defaults in `OnWorldEnabled`.
 
 ## Display Clone Direction
 
@@ -74,18 +75,20 @@ drag-right = camera-moves-right.
 
 ## Cam Anim Interaction
 
-While the actor is locked by a cam anim (`GetActorState() == c_disabled`),
-`Tick` skips `ApplyOrbitCamera`. The cam anim controls the camera via
-`LegoAnimPresenter::TransformPointOfView`. If we called `ApplyOrbitCamera`, it
-would fight the cam anim, and if the user interrupts (space bar), the cam anim
-end handler reads the ViewROI position to place the actor — our elevated orbit
-camera position would cause the actor to be placed in the air.
+While a cam anim locks the player (`GetActorState() == c_disabled`), two
+things protect the orbit camera:
 
-The first interruption releases the player (resets actor state to `c_initial`),
-at which point the orbit camera resumes immediately — even if
-`m_animRunning` is still true for background animations.
+1. **Tick guard**: `ApplyOrbitCamera` is skipped so it doesn't fight the cam
+   anim's `TransformPointOfView`. Without this, the cam anim end handler would
+   read our elevated orbit camera position and place the actor in the air.
 
-When the cam anim ends, `OnCamAnimEnd` restores the orbit camera.
+2. **`OnCamAnimEnd`**: When the cam anim releases the player (first space bar
+   interruption or natural end), this callback calls `SetupCamera` to restore
+   the orbit camera.
+
+After the first interruption, the actor state resets to `c_initial` and the
+orbit camera resumes immediately — even if `m_animRunning` is still true for
+background animations playing in the world.
 
 ## Network Direction
 

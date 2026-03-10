@@ -265,11 +265,6 @@ MxS32 LegoPathActor::CalculateTransform(float p_time, Matrix4& p_transform)
 
 		m_worldSpeed = nav->GetLinearVel();
 
-		MxBool invertDir = Extension<MultiplayerExt>::Call(ShouldInvertMovement, this).value_or(FALSE);
-		if (invertDir) {
-			dir *= -1.0f;
-		}
-
 		if (nav->CalculateNewPosDir(pos, dir, newPos, newDir, m_boundary->GetUp())) {
 			Mx3DPointFloat newPosCopy;
 			newPosCopy = newPos;
@@ -327,10 +322,6 @@ MxS32 LegoPathActor::CalculateTransform(float p_time, Matrix4& p_transform)
 						newDir += newPosDelta;
 					}
 				}
-			}
-
-			if (invertDir) {
-				newDir *= -1.0f;
 			}
 
 			p_transform.SetIdentity();
