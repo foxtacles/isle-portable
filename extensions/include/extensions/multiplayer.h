@@ -50,8 +50,6 @@ public:
 	static void HandleActorEnter(IslePathActor* p_actor);
 	static void HandleActorExit(IslePathActor* p_actor);
 	static void HandleCamAnimEnd(LegoPathActor* p_actor);
-	static MxBool ShouldInvertMovement(LegoPathActor* p_actor);
-	static MxBool ShouldBlockMovement(LegoPathActor* p_actor);
 
 	// Returns TRUE if the name belongs to a multiplayer clone (entity-less ROI).
 	static MxBool IsClonedCharacter(const char* p_name);
@@ -95,8 +93,6 @@ constexpr auto HandleROIClick = &MultiplayerExt::HandleROIClick;
 constexpr auto HandleActorEnter = &MultiplayerExt::HandleActorEnter;
 constexpr auto HandleActorExit = &MultiplayerExt::HandleActorExit;
 constexpr auto HandleCamAnimEnd = &MultiplayerExt::HandleCamAnimEnd;
-constexpr auto ShouldInvertMovement = &MultiplayerExt::ShouldInvertMovement;
-constexpr auto ShouldBlockMovement = &MultiplayerExt::ShouldBlockMovement;
 constexpr auto IsClonedCharacter = &MultiplayerExt::IsClonedCharacter;
 constexpr auto HandleBeforeSaveLoad = &MultiplayerExt::HandleBeforeSaveLoad;
 constexpr auto HandleSaveLoaded = &MultiplayerExt::HandleSaveLoaded;
@@ -113,8 +109,6 @@ constexpr decltype(&MultiplayerExt::HandleROIClick) HandleROIClick = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorEnter) HandleActorEnter = nullptr;
 constexpr decltype(&MultiplayerExt::HandleActorExit) HandleActorExit = nullptr;
 constexpr decltype(&MultiplayerExt::HandleCamAnimEnd) HandleCamAnimEnd = nullptr;
-constexpr decltype(&MultiplayerExt::ShouldInvertMovement) ShouldInvertMovement = nullptr;
-constexpr decltype(&MultiplayerExt::ShouldBlockMovement) ShouldBlockMovement = nullptr;
 constexpr decltype(&MultiplayerExt::IsClonedCharacter) IsClonedCharacter = nullptr;
 constexpr decltype(&MultiplayerExt::HandleBeforeSaveLoad) HandleBeforeSaveLoad = nullptr;
 constexpr decltype(&MultiplayerExt::HandleSaveLoaded) HandleSaveLoaded = nullptr;

@@ -1,6 +1,7 @@
 #include "legopathactor.h"
 
 #include "define.h"
+#include "extensions/multiplayer.h"
 #include "geom/legoorientededge.h"
 #include "legocachesoundmanager.h"
 #include "legocameracontroller.h"
@@ -19,6 +20,8 @@
 #include <SDL3/SDL.h>
 #include <mxdebug.h>
 #include <vec.h>
+
+using namespace Extensions;
 
 DECOMP_SIZE_ASSERT(LegoPathActor, 0x154)
 DECOMP_SIZE_ASSERT(LegoPathEdgeContainer, 0x3c)
@@ -261,17 +264,6 @@ MxS32 LegoPathActor::CalculateTransform(float p_time, Matrix4& p_transform)
 		assert(nav);
 
 		m_worldSpeed = nav->GetLinearVel();
-
-		MxBool blockMovement = Extension<MultiplayerExt>::Call(ShouldBlockMovement, this).value_or(FALSE);
-		if (blockMovement) {
-			m_worldSpeed = 0.0f;
-			return 0;
-		}
-
-		MxBool invertDir = Extension<MultiplayerExt>::Call(ShouldInvertMovement, this).value_or(FALSE);
-		if (invertDir) {
-			dir *= -1.0f;
-		}
 
 		if (nav->CalculateNewPosDir(pos, dir, newPos, newDir, m_boundary->GetUp())) {
 			Mx3DPointFloat newPosCopy;

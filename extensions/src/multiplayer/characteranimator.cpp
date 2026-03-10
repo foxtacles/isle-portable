@@ -20,9 +20,8 @@ using namespace Multiplayer;
 CharacterAnimator::CharacterAnimator(const CharacterAnimatorConfig& p_config)
 	: m_config(p_config), m_walkAnimId(0), m_idleAnimId(0), m_walkAnimCache(nullptr), m_idleAnimCache(nullptr),
 	  m_animTime(0.0f), m_idleTime(0.0f), m_idleAnimTime(0.0f), m_wasMoving(false), m_emoteAnimCache(nullptr),
-	  m_emoteTime(0.0f), m_emoteDuration(0.0f), m_emoteActive(false), m_currentEmoteId(0),
-	  m_frozenEmoteId(-1), m_frozenAnimCache(nullptr), m_frozenAnimDuration(0.0f),
-	  m_clickAnimObjectId(0), m_rideAnim(nullptr),
+	  m_emoteTime(0.0f), m_emoteDuration(0.0f), m_emoteActive(false), m_currentEmoteId(0), m_frozenEmoteId(-1),
+	  m_frozenAnimCache(nullptr), m_frozenAnimDuration(0.0f), m_clickAnimObjectId(0), m_rideAnim(nullptr),
 	  m_rideRoiMap(nullptr), m_rideRoiMapSize(0), m_rideVehicleROI(nullptr), m_currentVehicleType(VEHICLE_NONE),
 	  m_nameBubble(nullptr)
 {
@@ -363,6 +362,12 @@ void CharacterAnimator::InitAnimCaches(LegoROI* p_roi)
 {
 	m_walkAnimCache = GetOrBuildAnimCache(p_roi, g_walkAnimNames[m_walkAnimId]);
 	m_idleAnimCache = GetOrBuildAnimCache(p_roi, g_idleAnimNames[m_idleAnimId]);
+
+	// Rebuild frozen emote cache if the frozen state was set before the ROI was available
+	// (e.g. state message arrived before world was ready, or world was re-enabled).
+	if (m_frozenEmoteId >= 0 && !m_frozenAnimCache) {
+		SetFrozenEmoteId(m_frozenEmoteId, p_roi);
+	}
 }
 
 void CharacterAnimator::SetFrozenEmoteId(int8_t p_emoteId, LegoROI* p_roi)

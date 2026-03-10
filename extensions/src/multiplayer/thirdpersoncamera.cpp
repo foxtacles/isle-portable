@@ -7,6 +7,7 @@
 #include "islepathactor.h"
 #include "legocameracontroller.h"
 #include "legocharactermanager.h"
+#include "legonavcontroller.h"
 #include "legopathactor.h"
 #include "legovideomanager.h"
 #include "legoworld.h"
@@ -296,6 +297,8 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 	bool isMoving = SDL_fabsf(speed) > 0.01f;
 	if (m_animator.IsInMultiPartEmote()) {
 		isMoving = false;
+		userActor->SetWorldSpeed(0.0f);
+		NavController()->SetLinearVel(0.0f);
 	}
 
 	m_animator.Tick(p_deltaTime, m_playerROI, isMoving);
