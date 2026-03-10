@@ -1,7 +1,6 @@
 #include "legopathactor.h"
 
 #include "define.h"
-#include "extensions/multiplayer.h"
 #include "geom/legoorientededge.h"
 #include "legocachesoundmanager.h"
 #include "legocameracontroller.h"
@@ -20,8 +19,6 @@
 #include <SDL3/SDL.h>
 #include <mxdebug.h>
 #include <vec.h>
-
-using namespace Extensions;
 
 DECOMP_SIZE_ASSERT(LegoPathActor, 0x154)
 DECOMP_SIZE_ASSERT(LegoPathEdgeContainer, 0x3c)
