@@ -66,9 +66,12 @@ public:
 	// Forwards SDL events to the third-person camera for orbit controls.
 	static void HandleSDLEvent(SDL_Event* p_event);
 
-	// Returns TRUE when the third-person camera is active and input
-	// (touch movement, right-click interactions) should be suppressed.
+	// Returns TRUE when the third-person camera is active.
 	static MxBool IsThirdPersonCameraActive();
+
+	// Suppresses touch input when a multi-touch camera gesture is active.
+	// Returns TRUE if the caller should return early.
+	static MxBool HandleTouchInput();
 
 	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
@@ -96,6 +99,7 @@ constexpr auto HandleSaveLoaded = &MultiplayerExt::HandleSaveLoaded;
 constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 constexpr auto HandleSDLEvent = &MultiplayerExt::HandleSDLEvent;
 constexpr auto IsThirdPersonCameraActive = &MultiplayerExt::IsThirdPersonCameraActive;
+constexpr auto HandleTouchInput = &MultiplayerExt::HandleTouchInput;
 #else
 constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
 constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
@@ -111,6 +115,7 @@ constexpr decltype(&MultiplayerExt::HandleSaveLoaded) HandleSaveLoaded = nullptr
 constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 constexpr decltype(&MultiplayerExt::HandleSDLEvent) HandleSDLEvent = nullptr;
 constexpr decltype(&MultiplayerExt::IsThirdPersonCameraActive) IsThirdPersonCameraActive = nullptr;
+constexpr decltype(&MultiplayerExt::HandleTouchInput) HandleTouchInput = nullptr;
 #endif
 
 }; // namespace Extensions
