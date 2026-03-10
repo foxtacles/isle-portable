@@ -347,6 +347,9 @@ void ThirdPersonCamera::OnWorldEnabled(LegoWorld* p_world)
 	// Animation presenters may have been recreated.
 	m_animator.ClearAll();
 
+	// Reset orbit to default position behind the character.
+	ResetOrbitState();
+
 	// ReinitForCharacter runs BEFORE SpawnPlayer/PlaceActor, so the ROI
 	// position is stale.  Set the flag so OnActorEnter and ReinitForCharacter
 	// defer camera setup.  The first Tick after PlaceActor clears it, and
