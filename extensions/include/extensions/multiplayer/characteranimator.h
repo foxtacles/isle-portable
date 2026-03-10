@@ -90,6 +90,7 @@ private:
 	using AnimCache = AnimUtils::AnimCache;
 
 	AnimCache* GetOrBuildAnimCache(LegoROI* p_roi, const char* p_animName);
+	void ClearFrozenState();
 
 	CharacterAnimatorConfig m_config;
 

@@ -330,7 +330,7 @@ void NetworkManager::BroadcastLocalState()
 	m_thirdPersonCamera.GetCustomizeState().Pack(msg.customizeData);
 	msg.customizeFlags = m_localAllowRemoteCustomize ? 0x01 : 0x00;
 
-	// Encode multi-part emote frozen state (bit 1 = frozen, bits 2-4 = emote ID)
+	// Encode multi-part emote frozen state (0x02 = frozen, emote ID in bits 2-4, max 8 emotes)
 	int8_t frozenId = m_thirdPersonCamera.GetFrozenEmoteId();
 	if (frozenId >= 0) {
 		msg.customizeFlags |= 0x02;

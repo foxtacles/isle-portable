@@ -122,9 +122,7 @@ void CharacterAnimator::Tick(float p_deltaTime, LegoROI* p_roi, bool p_isMoving)
 			else {
 				if (IsMultiPartEmote(m_currentEmoteId) && m_frozenEmoteId >= 0) {
 					// Phase 2 completed -> unfreeze
-					m_frozenEmoteId = -1;
-					m_frozenAnimCache = nullptr;
-					m_frozenAnimDuration = 0.0f;
+					ClearFrozenState();
 				}
 				// Emote completed -- return to stationary flow
 				m_emoteActive = false;
@@ -383,10 +381,15 @@ void CharacterAnimator::SetFrozenEmoteId(int8_t p_emoteId, LegoROI* p_roi)
 		}
 	}
 	else {
-		m_frozenEmoteId = -1;
-		m_frozenAnimCache = nullptr;
-		m_frozenAnimDuration = 0.0f;
+		ClearFrozenState();
 	}
+}
+
+void CharacterAnimator::ClearFrozenState()
+{
+	m_frozenEmoteId = -1;
+	m_frozenAnimCache = nullptr;
+	m_frozenAnimDuration = 0.0f;
 }
 
 void CharacterAnimator::ClearAnimCaches()
@@ -395,9 +398,7 @@ void CharacterAnimator::ClearAnimCaches()
 	m_idleAnimCache = nullptr;
 	m_emoteAnimCache = nullptr;
 	m_emoteActive = false;
-	m_frozenEmoteId = -1;
-	m_frozenAnimCache = nullptr;
-	m_frozenAnimDuration = 0.0f;
+	ClearFrozenState();
 }
 
 void CharacterAnimator::ClearAll()
@@ -413,9 +414,7 @@ void CharacterAnimator::ResetAnimState()
 	m_idleAnimTime = 0.0f;
 	m_wasMoving = false;
 	m_emoteActive = false;
-	m_frozenEmoteId = -1;
-	m_frozenAnimCache = nullptr;
-	m_frozenAnimDuration = 0.0f;
+	ClearFrozenState();
 }
 
 void CharacterAnimator::ApplyIdleFrame0(LegoROI* p_roi)
