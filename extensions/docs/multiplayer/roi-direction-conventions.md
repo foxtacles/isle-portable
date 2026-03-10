@@ -1,4 +1,4 @@
-# ROI Direction Conventions & Third-Person Camera Corrections
+# ROI Direction Conventions & Third-Person Camera
 
 ## Background: The Two Z-Axis Conventions
 
@@ -6,131 +6,89 @@ The game engine represents an actor's facing direction via the z-axis of its ROI
 (Real-time Object Instance) local-to-world transform. Two opposite conventions
 exist throughout the codebase:
 
-| Convention   | ROI z-axis points...         | Used by                                              |
-|--------------|------------------------------|------------------------------------------------------|
-| **forward-z**  | Toward visual forward        | `PlaceActor` (when `m_cameraFlag=TRUE`), cam anim end |
-| **backward-z** | Away from visual forward     | After `Enter()`'s `TurnAround()`, vehicle ROIs       |
+| Convention     | ROI z-axis points...     | Used by                                                |
+|----------------|--------------------------|--------------------------------------------------------|
+| **forward-z**  | Toward visual forward    | `PlaceActor` (with `m_cameraFlag=TRUE`), cam anim end |
+| **backward-z** | Away from visual forward | After `Enter()`'s `TurnAround()`, vehicle ROIs         |
 
-Toggling between conventions is a single operation — `FlipROIDirection` (or
-`IslePathActor::TurnAround`): negate the z-axis and recompute the right vector.
+Toggling between conventions is done by `FlipROIDirection` /
+`IslePathActor::TurnAround`: negate the z-axis and recompute the right vector.
 
-The third-person orbit camera (`ComputeOrbitVectors`) uses **backward-z**. It
-treats local Z+ as "behind the character" and places the camera there, looking
-toward −Z (the character's face). The movement inversion (`ShouldInvertMovement`)
-also depends on this convention.
+## Design Choice: Forward-Z
 
-## Why the Complexity Exists
+The third-person orbit camera uses **forward-z**, matching the convention that
+`PlaceActor` naturally produces. This eliminates the need to flip the ROI
+direction after every `PlaceActor` call and removes the `ShouldInvertMovement`
+movement inversion that would otherwise be needed.
 
-The engine's actor lifecycle does not consistently produce one convention:
+`ComputeOrbitVectors` treats local Z+ as the character's visual forward and
+places the camera at local −Z (behind the character), looking toward +Z.
+
+## Engine Behavior
+
+The engine's actor lifecycle:
 
 ```
 Enter()
   → ResetWorldTransform(TRUE)   sets m_cameraFlag = TRUE
-  → TurnAround()                flips to backward-z  ← what we want
+  → TurnAround()                flips to backward-z
   → TransformPointOfView()      sets 1st-person camera
 
-PlaceActor()                     resets to forward-z  ← overwrites Enter
+PlaceActor()                     resets to forward-z  ← what we use
 ```
 
-`Enter()` and `PlaceActor()` are called in sequence during `SpawnPlayer()`, and
-`PlaceActor` always wins. Similarly, cam anim end handlers call `PlaceActor`,
-resetting to forward-z. Every code path that transitions the actor must therefore
-correct the ROI direction back to backward-z for the orbit camera.
+`PlaceActor` always produces forward-z (when `m_cameraFlag=TRUE`), which is
+exactly what the orbit camera expects. No direction correction is needed after
+`PlaceActor` runs.
 
-## Code Paths & Their Corrections
+## World Transition Timing
 
-### 1. Normal walking entry
+The one remaining complexity is timing during world transitions. The event order
+is:
 
-**Path:** `OnActorEnter` (non-vehicle, non-world-transition)
+1. `OnWorldEnabled` fires (from `LegoWorld::Enable`, BEFORE `SpawnPlayer`)
+2. `ReinitForCharacter` sets up the display ROI and marks `m_active = true`
+3. `Enter()` fires `OnActorEnter` — ROI is at **stale position** from previous session
+4. `PlaceActor` sets ROI to correct spawn position
+5. First `Tick` — `ApplyOrbitCamera` sets the camera at the correct position
 
-`Enter()` called `TurnAround()` → ROI is backward-z. We call `SetupCamera()`
-directly. No correction needed.
+Between steps 3 and 5, the ROI position is stale. If we set up the orbit camera
+in step 3, the stale view would freeze on screen during the ~500ms world load.
 
-### 2. Small vehicle entry
+The `m_pendingWorldTransition` flag handles this: set in `OnWorldEnabled`,
+it causes `OnActorEnter` and `ReinitForCharacter` to skip camera setup.
+Cleared in the first `Tick` after `PlaceActor`, where `ApplyOrbitCamera`
+naturally handles the camera.
 
-**Path:** `OnActorEnter` (small vehicle)
+## Display Clone Direction
 
-`Enter()` called `TurnAround()`, but vehicles natively use backward-z (mesh
-faces −z). Enter's TurnAround flipped to forward-z, breaking the convention.
-Fix: call `p_actor->TurnAround()` to undo it, then `SetupCamera()`.
+The native actor ROI is invisible in 3rd-person mode. A display clone renders
+the character model instead. Character meshes face −z, so the clone needs
+backward-z to look correct. When syncing the clone's transform from the native
+ROI (which is in forward-z), `Tick` negates the z-axis and recomputes the right
+vector — the same operation as `TurnAround`.
 
-### 3. Vehicle exit
+This also affects the right vector (X-axis): forward-z and backward-z produce
+opposite right vectors. The orbit yaw input is negated to compensate, keeping
+drag-right = camera-moves-right.
 
-**Path:** `OnActorExit` → `ReinitForCharacter`
+## Cam Anim Interaction
 
-`Exit()` places the walking character ROI via `SetLocation` using the vehicle's
-direction. The ROI is already in backward-z. `m_roiUnflipped` is false, so
-`ReinitForCharacter` does not flip.
-
-### 4. Disable → Enable cycle
-
-**Path:** `Disable()` → later `Enable()` → `ReinitForCharacter`
-
-`Disable()` flips the ROI to forward-z (for the vanilla 1st-person camera) and
-sets `m_roiUnflipped = true`. When `Enable()` → `ReinitForCharacter` runs, it
-sees `m_roiUnflipped && !m_needsDirectionFlip`, flips back to backward-z, and
-clears the flag.
-
-### 5. World transition (camera enabled)
-
-**Path:** `OnWorldEnabled` → `ReinitForCharacter` → `OnActorEnter` → `PlaceActor` → `Tick`
-
-This is the most complex path:
-
-1. **`OnWorldEnabled`** fires from `LegoWorld::Enable()`, BEFORE `SpawnPlayer`.
-   Sets `m_roiUnflipped = true` and `m_needsDirectionFlip = true`. Calls
-   `ReinitForCharacter`, which sets up the display ROI and `m_active = true`,
-   but skips the flip and `SetupCamera` (PlaceActor hasn't run yet and would
-   overwrite them).
-
-2. **`OnActorEnter`** fires from `Enter()` inside `SpawnPlayer`. Detects
-   `m_needsDirectionFlip && m_active` → returns immediately. We must NOT call
-   `SetupCamera` here because the ROI is at a stale position (from the previous
-   world session). The stale orbit camera view would freeze on screen during the
-   ~500ms world load, appearing as a wrong-direction flash.
-
-3. **`PlaceActor`** runs inside `SpawnPlayer`, setting the ROI to the correct
-   spawn position in forward-z.
-
-4. **First `Tick`** after PlaceActor: detects `m_needsDirectionFlip`, flips the
-   ROI to backward-z, calls `SetupCamera` at the correct position. Clears both
-   flags.
-
-### 6. World transition (camera disabled, enabled later)
-
-**Path:** `OnWorldEnabled` (early return) → later `Enable()` → `ReinitForCharacter`
-
-`OnWorldEnabled` sets `m_roiUnflipped = true` before the `m_enabled` check, so
-the flag is set even when the camera is disabled. When the user later enables the
-camera, `ReinitForCharacter` sees `m_roiUnflipped && !m_needsDirectionFlip`
-(PlaceActor already ran), flips to backward-z, and clears the flag.
-
-### 7. Cam anim end
-
-**Path:** `OnCamAnimEnd`
-
-The cam anim end handler (`FUN_1004b6d0`) calls `PlaceActor`, resetting the ROI
-to forward-z. `OnCamAnimEnd` flips to backward-z and calls `SetupCamera`. It
-also clears `m_needsDirectionFlip` and `m_roiUnflipped` to cancel any pending
-Tick correction.
-
-Note: `OnCamAnimEnd` only fires for cam anims with `m_unk0x29 = true`.
-
-### 8. Cam anim running (Tick guard)
-
-**Path:** `Tick` (every frame)
-
-While `AnimationManager::m_animRunning` is true, `Tick` skips
-`ApplyOrbitCamera()`. The cam anim controls the camera via
+While the actor is locked by a cam anim (`GetActorState() == c_disabled`),
+`Tick` skips `ApplyOrbitCamera`. The cam anim controls the camera via
 `LegoAnimPresenter::TransformPointOfView`. If we called `ApplyOrbitCamera`, it
-would fight the cam anim each frame. Critically, if the user interrupts the cam
-anim (space bar), the end handler reads the ViewROI position to place the actor.
-Our orbit camera position (elevated, behind the player) would cause the actor to
-be placed in the air.
+would fight the cam anim, and if the user interrupts (space bar), the cam anim
+end handler reads the ViewROI position to place the actor — our elevated orbit
+camera position would cause the actor to be placed in the air.
 
-## Flags
+The first interruption releases the player (resets actor state to `c_initial`),
+at which point the orbit camera resumes immediately — even if
+`m_animRunning` is still true for background animations.
 
-| Flag                  | Set by                        | Cleared by                              | Meaning                                                  |
-|-----------------------|-------------------------------|-----------------------------------------|----------------------------------------------------------|
-| `m_roiUnflipped`      | `Disable()`, `OnWorldEnabled` | `ReinitForCharacter`, `Tick`, `OnCamAnimEnd` | ROI is in forward-z and needs flipping to backward-z |
-| `m_needsDirectionFlip`| `OnWorldEnabled`              | `Tick`, `OnCamAnimEnd`                  | PlaceActor hasn't run yet; defer flip and camera setup    |
+When the cam anim ends, `OnCamAnimEnd` restores the orbit camera.
+
+## Network Direction
+
+The network protocol sends forward-z direction (visual forward). Remote players
+negate the received direction to backward-z for their ROI, since character meshes
+face −z.

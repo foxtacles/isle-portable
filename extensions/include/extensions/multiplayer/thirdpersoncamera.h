@@ -78,9 +78,8 @@ private:
 
 	bool m_enabled;
 	bool m_active;
-	bool m_roiUnflipped;       // True when Disable() flipped the ROI; ReinitForCharacter re-applies
-	bool m_needsDirectionFlip; // True after world transition; Tick corrects ROI direction post-PlaceActor
-	LegoROI* m_playerROI; // Borrowed, not owned
+	bool m_pendingWorldTransition; // True between OnWorldEnabled and first Tick; defers camera setup
+	LegoROI* m_playerROI;          // Borrowed, not owned
 
 	// Display actor override
 	uint8_t m_displayActorIndex;

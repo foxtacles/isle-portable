@@ -23,7 +23,6 @@ class MxDSAction;
 namespace Multiplayer
 {
 class NetworkManager;
-class ThirdPersonCamera;
 }
 
 // SIZE 0x30
@@ -209,7 +208,6 @@ public:
 
 private:
 	friend class Multiplayer::NetworkManager;
-	friend class Multiplayer::ThirdPersonCamera;
 
 	void Init();
 	MxResult FUN_100605e0(
