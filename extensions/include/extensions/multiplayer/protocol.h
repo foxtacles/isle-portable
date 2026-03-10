@@ -162,14 +162,24 @@ extern const int g_walkAnimCount;
 extern const char* const g_idleAnimNames[];
 extern const int g_idleAnimCount;
 
-// Emote animation table: [emoteId][phase]. Phase 0 = primary, phase 1 = phase-2 (nullptr for one-shot).
-extern const char* const g_emoteAnims[][2];
+// Per-phase emote data: animation name and optional sound effect.
+struct EmotePhase {
+	const char* anim;  // Animation name (nullptr = unused phase)
+	const char* sound; // Sound key for LegoCacheSoundManager (nullptr = silent)
+};
+
+// Emote table entry: two phases (phase 1 = primary, phase 2 = recovery for multi-part emotes).
+struct EmoteEntry {
+	EmotePhase phases[2];
+};
+
+extern const EmoteEntry g_emoteEntries[];
 extern const int g_emoteAnimCount;
 
 // Returns true if the emote is a multi-part stateful emote (has a phase-2 animation).
 inline bool IsMultiPartEmote(uint8_t p_emoteId)
 {
-	return p_emoteId < g_emoteAnimCount && g_emoteAnims[p_emoteId][1] != nullptr;
+	return p_emoteId < g_emoteAnimCount && g_emoteEntries[p_emoteId].phases[1].anim != nullptr;
 }
 
 extern const char* const g_vehicleROINames[VEHICLE_COUNT];
