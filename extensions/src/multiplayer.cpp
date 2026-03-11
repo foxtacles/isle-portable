@@ -368,3 +368,8 @@ bool Extensions::IsMultiplayerRejected()
 {
 	return Extension<MultiplayerExt>::Call(CheckRejected).value_or(FALSE);
 }
+
+void Extensions::HandleMultiplayerSDLEvent(SDL_Event* p_event)
+{
+	Extension<MultiplayerExt>::Call(HandleSDLEvent, p_event);
+}

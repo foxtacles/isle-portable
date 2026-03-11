@@ -753,6 +753,15 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 		}
 		break;
 
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP: {
+		SDL_Window* window = SDL_GetWindowFromID(p_event->button.windowID);
+		if (window) {
+			SDL_SetWindowRelativeMouseMode(window, SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_RMASK);
+		}
+		break;
+	}
+
 	case SDL_EVENT_FINGER_DOWN: {
 		if (m_touch.count < 2) {
 			int idx = m_touch.count;

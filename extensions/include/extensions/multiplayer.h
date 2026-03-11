@@ -97,6 +97,7 @@ private:
 
 #ifdef EXTENSIONS
 LEGO1_EXPORT bool IsMultiplayerRejected();
+LEGO1_EXPORT void HandleMultiplayerSDLEvent(SDL_Event* p_event);
 
 constexpr auto HandleCreate = &MultiplayerExt::HandleCreate;
 constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;
