@@ -24,6 +24,8 @@
 
 using namespace Multiplayer;
 
+static constexpr float TURN_RATE = 10.0f;
+
 // Flip a matrix from forward-z to backward-z (or vice versa) in place.
 // Same operation as IslePathActor::TurnAround: negate z, recompute right.
 static void FlipMatrixDirection(MxMatrix& p_mat)
@@ -39,7 +41,7 @@ ThirdPersonCamera::ThirdPersonCamera()
 	: m_enabled(false), m_active(false), m_pendingWorldTransition(false), m_playerROI(nullptr),
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr),
 	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true}), m_showNameBubble(true),
-	  m_orbitYaw(DEFAULT_ORBIT_YAW), m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
+	  m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
 	  m_absoluteYaw(DEFAULT_ORBIT_YAW), m_smoothedSpeed(0.0f), m_touch{}
 {
 	SDL_memset(m_displayUniqueName, 0, sizeof(m_displayUniqueName));
@@ -219,8 +221,7 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 		m_pendingWorldTransition = false;
 		LegoPathActor* actor = UserActor();
 		if (actor && actor->GetROI()) {
-			const float* dir = actor->GetROI()->GetWorldDirection();
-			m_absoluteYaw = SDL_atan2f(-dir[0], dir[2]) + DEFAULT_ORBIT_YAW;
+			InitAbsoluteYaw(actor->GetROI());
 		}
 	}
 
@@ -400,6 +401,22 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	m_animator.ClearAll();
 }
 
+float ThirdPersonCamera::GetLocalYaw(LegoROI* p_roi) const
+{
+	if (p_roi) {
+		const float* dir = p_roi->GetWorldDirection();
+		float playerWorldYaw = SDL_atan2f(-dir[0], dir[2]);
+		return m_absoluteYaw - playerWorldYaw;
+	}
+	return m_absoluteYaw;
+}
+
+void ThirdPersonCamera::InitAbsoluteYaw(LegoROI* p_roi)
+{
+	const float* dir = p_roi->GetWorldDirection();
+	m_absoluteYaw = SDL_atan2f(-dir[0], dir[2]) + DEFAULT_ORBIT_YAW;
+}
+
 void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
 {
 	LegoWorld* world = CurrentWorld();
@@ -407,27 +424,16 @@ void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
 		return;
 	}
 
-	// Initialize absolute yaw from player's world direction + default orbit yaw.
-	// Player direction uses forward-z convention: dir = (dx, dy, dz).
-	// World yaw = atan2(-dx, dz) gives the angle from +Z toward -X.
 	LegoROI* roi = p_actor->GetROI();
 	if (roi) {
-		const float* dir = roi->GetWorldDirection();
-		m_absoluteYaw = SDL_atan2f(-dir[0], dir[2]) + DEFAULT_ORBIT_YAW;
+		InitAbsoluteYaw(roi);
 	}
 	m_smoothedSpeed = 0.0f;
 
+	// InitAbsoluteYaw sets m_absoluteYaw = playerYaw + DEFAULT_ORBIT_YAW,
+	// so localYaw = m_absoluteYaw - playerYaw = DEFAULT_ORBIT_YAW.
 	Mx3DPointFloat at, camDir, up;
-	float localYaw = m_absoluteYaw;
-	if (roi) {
-		const float* dir = roi->GetWorldDirection();
-		float playerWorldYaw = SDL_atan2f(-dir[0], dir[2]);
-		localYaw = m_absoluteYaw - playerWorldYaw;
-	}
-	float savedYaw = m_orbitYaw;
-	m_orbitYaw = localYaw;
-	ComputeOrbitVectors(at, camDir, up);
-	m_orbitYaw = savedYaw;
+	ComputeOrbitVectors(DEFAULT_ORBIT_YAW, at, camDir, up);
 
 	world->GetCameraController()->SetWorldTransform(at, camDir, up);
 	p_actor->TransformPointOfView();
@@ -516,15 +522,20 @@ void ThirdPersonCamera::SetNameBubbleVisible(bool p_visible)
 	m_animator.SetNameBubbleVisible(p_visible);
 }
 
-void ThirdPersonCamera::ComputeOrbitVectors(Mx3DPointFloat& p_at, Mx3DPointFloat& p_dir, Mx3DPointFloat& p_up) const
+void ThirdPersonCamera::ComputeOrbitVectors(
+	float p_yaw,
+	Mx3DPointFloat& p_at,
+	Mx3DPointFloat& p_dir,
+	Mx3DPointFloat& p_up
+) const
 {
 	// Convert spherical coordinates to camera offset in entity-local space.
 	// The ROI uses forward-z (Z+ = visual forward).  The camera orbits
 	// behind the character, so at yaw=0 it sits at local -Z.
 	float cosP = SDL_cosf(m_orbitPitch);
 	float sinP = SDL_sinf(m_orbitPitch);
-	float sinY = SDL_sinf(m_orbitYaw);
-	float cosY = SDL_cosf(m_orbitYaw);
+	float sinY = SDL_sinf(p_yaw);
+	float cosY = SDL_cosf(p_yaw);
 
 	p_at = Mx3DPointFloat(
 		m_orbitDistance * sinY * cosP,
@@ -548,19 +559,10 @@ void ThirdPersonCamera::ApplyOrbitCamera()
 
 	// Derive entity-local yaw from absolute yaw and player's world facing.
 	// This prevents the camera from rotating when the player turns.
-	LegoROI* roi = actor->GetROI();
-	float localYaw = m_absoluteYaw;
-	if (roi) {
-		const float* dir = roi->GetWorldDirection();
-		float playerWorldYaw = SDL_atan2f(-dir[0], dir[2]);
-		localYaw = m_absoluteYaw - playerWorldYaw;
-	}
+	float localYaw = GetLocalYaw(actor->GetROI());
 
-	float savedYaw = m_orbitYaw;
-	m_orbitYaw = localYaw;
 	Mx3DPointFloat at, camDir, up;
-	ComputeOrbitVectors(at, camDir, up);
-	m_orbitYaw = savedYaw;
+	ComputeOrbitVectors(localYaw, at, camDir, up);
 
 	world->GetCameraController()->SetWorldTransform(at, camDir, up);
 	actor->TransformPointOfView();
@@ -568,7 +570,6 @@ void ThirdPersonCamera::ApplyOrbitCamera()
 
 void ThirdPersonCamera::ResetOrbitState()
 {
-	m_orbitYaw = DEFAULT_ORBIT_YAW;
 	m_orbitPitch = DEFAULT_ORBIT_PITCH;
 	m_orbitDistance = DEFAULT_ORBIT_DISTANCE;
 	m_absoluteYaw = DEFAULT_ORBIT_YAW;
@@ -692,8 +693,6 @@ MxBool ThirdPersonCamera::HandleCameraRelativeMovement(
 				angleDiff += 2.0f * SDL_PI_F;
 			}
 
-			// Turn rate in radians/sec
-			static constexpr float TURN_RATE = 10.0f;
 			float maxTurn = TURN_RATE * p_deltaTime;
 			if (SDL_fabsf(angleDiff) > maxTurn) {
 				angleDiff = angleDiff > 0 ? maxTurn : -maxTurn;
@@ -729,11 +728,8 @@ MxBool ThirdPersonCamera::HandleCameraRelativeMovement(
 		float newPlayerYaw = SDL_atan2f(-p_newDir[0], p_newDir[2]);
 		float localYaw = m_absoluteYaw - newPlayerYaw;
 
-		float savedYaw = m_orbitYaw;
-		m_orbitYaw = localYaw;
 		Mx3DPointFloat at, camDir, camUp;
-		ComputeOrbitVectors(at, camDir, camUp);
-		m_orbitYaw = savedYaw;
+		ComputeOrbitVectors(localYaw, at, camDir, camUp);
 
 		world->GetCameraController()->SetWorldTransform(at, camDir, camUp);
 	}

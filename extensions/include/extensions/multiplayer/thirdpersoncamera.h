@@ -72,11 +72,14 @@ public:
 
 private:
 	// Orbit camera helpers
-	void ComputeOrbitVectors(Mx3DPointFloat& p_at, Mx3DPointFloat& p_dir, Mx3DPointFloat& p_up) const;
+	void ComputeOrbitVectors(float p_yaw, Mx3DPointFloat& p_at, Mx3DPointFloat& p_dir, Mx3DPointFloat& p_up) const;
 	void ApplyOrbitCamera();
 	void ResetOrbitState();
 	void ClampPitch();
 	void ClampDistance();
+
+	float GetLocalYaw(LegoROI* p_roi) const;
+	void InitAbsoluteYaw(LegoROI* p_roi);
 
 	void SetupCamera(LegoPathActor* p_actor);
 	void ReinitForCharacter();
@@ -105,7 +108,6 @@ private:
 	bool m_showNameBubble;
 
 	// Orbit camera state
-	float m_orbitYaw;
 	float m_orbitPitch;
 	float m_orbitDistance;
 	float m_absoluteYaw;  // Camera yaw in world space (decoupled from player facing)
