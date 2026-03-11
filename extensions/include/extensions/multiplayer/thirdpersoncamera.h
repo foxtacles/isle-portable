@@ -9,9 +9,11 @@
 #include <cstdint>
 
 class IslePathActor;
+class LegoNavController;
 class LegoPathActor;
 class LegoROI;
 class LegoWorld;
+class Vector3;
 
 namespace Multiplayer
 {
@@ -53,6 +55,16 @@ public:
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
+
+	// Camera-relative movement override (called from nav controller hook)
+	MxBool HandleCameraRelativeMovement(
+		LegoNavController* p_nav,
+		const Vector3& p_curPos,
+		const Vector3& p_curDir,
+		Vector3& p_newPos,
+		Vector3& p_newDir,
+		float p_deltaTime
+	);
 
 	// Free camera input handling
 	void HandleSDLEvent(SDL_Event* p_event);
@@ -96,6 +108,8 @@ private:
 	float m_orbitYaw;
 	float m_orbitPitch;
 	float m_orbitDistance;
+	float m_absoluteYaw;  // Camera yaw in world space (decoupled from player facing)
+	float m_smoothedSpeed; // Extension-managed velocity for smooth acceleration/deceleration
 
 	// Touch gesture tracking
 	bool m_touchGestureActive = false;

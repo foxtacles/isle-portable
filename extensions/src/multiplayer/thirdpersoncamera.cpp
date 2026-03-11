@@ -7,6 +7,7 @@
 #include "islepathactor.h"
 #include "legocameracontroller.h"
 #include "legocharactermanager.h"
+#include "legoinputmanager.h"
 #include "legonavcontroller.h"
 #include "legopathactor.h"
 #include "legovideomanager.h"
@@ -39,7 +40,7 @@ ThirdPersonCamera::ThirdPersonCamera()
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr),
 	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true}), m_showNameBubble(true),
 	  m_orbitYaw(DEFAULT_ORBIT_YAW), m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
-	  m_touch{}
+	  m_absoluteYaw(DEFAULT_ORBIT_YAW), m_smoothedSpeed(0.0f), m_touch{}
 {
 	SDL_memset(m_displayUniqueName, 0, sizeof(m_displayUniqueName));
 }
@@ -212,9 +213,15 @@ void ThirdPersonCamera::Tick(float p_deltaTime)
 
 	// After a world transition, PlaceActor has now run and set the ROI to
 	// the correct position.  Clear the flag so subsequent OnActorEnter calls
-	// work normally.  ApplyOrbitCamera below handles the camera setup.
+	// work normally.  Initialize absolute yaw from the player's actual
+	// direction so the camera starts behind the character.
 	if (m_pendingWorldTransition) {
 		m_pendingWorldTransition = false;
+		LegoPathActor* actor = UserActor();
+		if (actor && actor->GetROI()) {
+			const float* dir = actor->GetROI()->GetWorldDirection();
+			m_absoluteYaw = SDL_atan2f(-dir[0], dir[2]) + DEFAULT_ORBIT_YAW;
+		}
 	}
 
 	// While a cam anim locks the player (actor state c_disabled), calling
@@ -400,9 +407,29 @@ void ThirdPersonCamera::SetupCamera(LegoPathActor* p_actor)
 		return;
 	}
 
-	Mx3DPointFloat at, dir, up;
-	ComputeOrbitVectors(at, dir, up);
-	world->GetCameraController()->SetWorldTransform(at, dir, up);
+	// Initialize absolute yaw from player's world direction + default orbit yaw.
+	// Player direction uses forward-z convention: dir = (dx, dy, dz).
+	// World yaw = atan2(-dx, dz) gives the angle from +Z toward -X.
+	LegoROI* roi = p_actor->GetROI();
+	if (roi) {
+		const float* dir = roi->GetWorldDirection();
+		m_absoluteYaw = SDL_atan2f(-dir[0], dir[2]) + DEFAULT_ORBIT_YAW;
+	}
+	m_smoothedSpeed = 0.0f;
+
+	Mx3DPointFloat at, camDir, up;
+	float localYaw = m_absoluteYaw;
+	if (roi) {
+		const float* dir = roi->GetWorldDirection();
+		float playerWorldYaw = SDL_atan2f(-dir[0], dir[2]);
+		localYaw = m_absoluteYaw - playerWorldYaw;
+	}
+	float savedYaw = m_orbitYaw;
+	m_orbitYaw = localYaw;
+	ComputeOrbitVectors(at, camDir, up);
+	m_orbitYaw = savedYaw;
+
+	world->GetCameraController()->SetWorldTransform(at, camDir, up);
 	p_actor->TransformPointOfView();
 }
 
@@ -519,9 +546,23 @@ void ThirdPersonCamera::ApplyOrbitCamera()
 		return;
 	}
 
-	Mx3DPointFloat at, dir, up;
-	ComputeOrbitVectors(at, dir, up);
-	world->GetCameraController()->SetWorldTransform(at, dir, up);
+	// Derive entity-local yaw from absolute yaw and player's world facing.
+	// This prevents the camera from rotating when the player turns.
+	LegoROI* roi = actor->GetROI();
+	float localYaw = m_absoluteYaw;
+	if (roi) {
+		const float* dir = roi->GetWorldDirection();
+		float playerWorldYaw = SDL_atan2f(-dir[0], dir[2]);
+		localYaw = m_absoluteYaw - playerWorldYaw;
+	}
+
+	float savedYaw = m_orbitYaw;
+	m_orbitYaw = localYaw;
+	Mx3DPointFloat at, camDir, up;
+	ComputeOrbitVectors(at, camDir, up);
+	m_orbitYaw = savedYaw;
+
+	world->GetCameraController()->SetWorldTransform(at, camDir, up);
 	actor->TransformPointOfView();
 }
 
@@ -530,6 +571,8 @@ void ThirdPersonCamera::ResetOrbitState()
 	m_orbitYaw = DEFAULT_ORBIT_YAW;
 	m_orbitPitch = DEFAULT_ORBIT_PITCH;
 	m_orbitDistance = DEFAULT_ORBIT_DISTANCE;
+	m_absoluteYaw = DEFAULT_ORBIT_YAW;
+	m_smoothedSpeed = 0.0f;
 	m_touch = {};
 }
 
@@ -553,6 +596,151 @@ void ThirdPersonCamera::ClampDistance()
 	}
 }
 
+MxBool ThirdPersonCamera::HandleCameraRelativeMovement(
+	LegoNavController* p_nav,
+	const Vector3& p_curPos,
+	const Vector3& p_curDir,
+	Vector3& p_newPos,
+	Vector3& p_newDir,
+	float p_deltaTime
+)
+{
+	// Read keyboard state
+	LegoInputManager* inputManager = InputManager();
+	MxU32 keyFlags = 0;
+	if (!inputManager || inputManager->GetNavigationKeyStates(keyFlags) == FAILURE) {
+		keyFlags = 0;
+	}
+
+	// Compute camera world-forward and right from absolute yaw
+	float camForwardX = -SDL_sinf(m_absoluteYaw);
+	float camForwardZ = SDL_cosf(m_absoluteYaw);
+	float camRightX = SDL_cosf(m_absoluteYaw);
+	float camRightZ = SDL_sinf(m_absoluteYaw);
+
+	// Map key flags to combined movement direction
+	float moveDirX = 0.0f;
+	float moveDirZ = 0.0f;
+
+	if (keyFlags & LegoInputManager::c_up) {
+		moveDirX += camForwardX;
+		moveDirZ += camForwardZ;
+	}
+	if (keyFlags & LegoInputManager::c_down) {
+		moveDirX -= camForwardX;
+		moveDirZ -= camForwardZ;
+	}
+	if (keyFlags & LegoInputManager::c_left) {
+		moveDirX -= camRightX;
+		moveDirZ -= camRightZ;
+	}
+	if (keyFlags & LegoInputManager::c_right) {
+		moveDirX += camRightX;
+		moveDirZ += camRightZ;
+	}
+
+	// Normalize movement direction
+	float moveDirLen = SDL_sqrtf(moveDirX * moveDirX + moveDirZ * moveDirZ);
+	bool hasInput = moveDirLen > 0.001f;
+	if (hasInput) {
+		moveDirX /= moveDirLen;
+		moveDirZ /= moveDirLen;
+	}
+
+	// Smooth speed using acceleration/deceleration (mirroring nav controller's model)
+	float maxSpeed = p_nav->m_maxLinearVel;
+	if (hasInput) {
+		float accel = p_nav->m_maxLinearAccel;
+		m_smoothedSpeed += accel * p_deltaTime;
+		if (m_smoothedSpeed > maxSpeed) {
+			m_smoothedSpeed = maxSpeed;
+		}
+	}
+	else {
+		float decel = p_nav->m_maxLinearDeccel;
+		m_smoothedSpeed -= decel * p_deltaTime;
+		if (m_smoothedSpeed < 0.0f) {
+			m_smoothedSpeed = 0.0f;
+		}
+	}
+
+	if (m_smoothedSpeed < p_nav->m_zeroThreshold && !hasInput) {
+		m_smoothedSpeed = 0.0f;
+		// No movement, keep current position and direction
+		p_newPos = p_curPos;
+		p_newDir = p_curDir;
+	}
+	else {
+		// Compute new position.  Include p_curDir[1] (slope from boundary
+		// orientation) so the actor follows terrain height changes.
+		float speed = m_smoothedSpeed * p_deltaTime;
+		if (hasInput) {
+			p_newPos[0] = p_curPos[0] + moveDirX * speed;
+			p_newPos[1] = p_curPos[1] + p_curDir[1] * speed;
+			p_newPos[2] = p_curPos[2] + moveDirZ * speed;
+
+			// Smooth turn: interpolate facing toward movement direction
+			float targetYaw = SDL_atan2f(-moveDirX, moveDirZ);
+			float currentYaw = SDL_atan2f(-p_curDir[0], p_curDir[2]);
+			float angleDiff = targetYaw - currentYaw;
+
+			// Wrap to [-PI, PI]
+			while (angleDiff > SDL_PI_F) {
+				angleDiff -= 2.0f * SDL_PI_F;
+			}
+			while (angleDiff < -SDL_PI_F) {
+				angleDiff += 2.0f * SDL_PI_F;
+			}
+
+			// Turn rate in radians/sec
+			static constexpr float TURN_RATE = 10.0f;
+			float maxTurn = TURN_RATE * p_deltaTime;
+			if (SDL_fabsf(angleDiff) > maxTurn) {
+				angleDiff = angleDiff > 0 ? maxTurn : -maxTurn;
+			}
+
+			float newYaw = currentYaw + angleDiff;
+			p_newDir[0] = -SDL_sinf(newYaw);
+			p_newDir[1] = p_curDir[1];
+			p_newDir[2] = SDL_cosf(newYaw);
+		}
+		else {
+			// Decelerating: continue in current direction
+			p_newPos[0] = p_curPos[0] + p_curDir[0] * speed;
+			p_newPos[1] = p_curPos[1] + p_curDir[1] * speed;
+			p_newPos[2] = p_curPos[2] + p_curDir[2] * speed;
+			p_newDir = p_curDir;
+		}
+	}
+
+	// Set nav controller velocities via friend access so GetWorldSpeed()
+	// reports correctly for animations/network
+	p_nav->m_linearVel = m_smoothedSpeed;
+	// Suppress camera roll in Animate()
+	p_nav->m_rotationalVel = 0.0f;
+
+	// Pre-set camera controller's local transform for the NEW player direction.
+	// TransformPointOfView() runs after this hook returns but before Tick()'s
+	// ApplyOrbitCamera().  Without this, the stale local transform (computed for
+	// the old facing) composes with the new actor transform, causing a one-frame
+	// camera flash in the wrong direction.
+	LegoWorld* world = CurrentWorld();
+	if (world && world->GetCameraController()) {
+		float newPlayerYaw = SDL_atan2f(-p_newDir[0], p_newDir[2]);
+		float localYaw = m_absoluteYaw - newPlayerYaw;
+
+		float savedYaw = m_orbitYaw;
+		m_orbitYaw = localYaw;
+		Mx3DPointFloat at, camDir, camUp;
+		ComputeOrbitVectors(at, camDir, camUp);
+		m_orbitYaw = savedYaw;
+
+		world->GetCameraController()->SetWorldTransform(at, camDir, camUp);
+	}
+
+	return TRUE;
+}
+
 void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 {
 	switch (p_event->type) {
@@ -563,7 +751,7 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 
 	case SDL_EVENT_MOUSE_MOTION:
 		if (p_event->motion.state & SDL_BUTTON_RMASK) {
-			m_orbitYaw -= p_event->motion.xrel * 0.005f;
+			m_absoluteYaw -= p_event->motion.xrel * 0.005f;
 			m_orbitPitch += p_event->motion.yrel * 0.005f;
 			ClampPitch();
 		}
@@ -621,7 +809,7 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 			// Two-finger drag for orbit
 			float moveX = m_touch.x[idx] - oldX;
 			float moveY = m_touch.y[idx] - oldY;
-			m_orbitYaw += moveX * 2.0f;
+			m_absoluteYaw += moveX * 2.0f;
 			m_orbitPitch += moveY * 2.0f;
 			ClampPitch();
 		}

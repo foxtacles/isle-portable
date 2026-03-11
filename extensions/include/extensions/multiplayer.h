@@ -10,9 +10,11 @@
 class IslePathActor;
 class LegoEntity;
 class LegoEventNotificationParam;
+class LegoNavController;
 class LegoPathActor;
 class LegoROI;
 class LegoWorld;
+class Vector3;
 
 namespace Multiplayer
 {
@@ -73,6 +75,17 @@ public:
 	// Returns TRUE if the caller should return early.
 	static MxBool HandleTouchInput();
 
+	// Overrides nav controller movement for camera-relative 3rd person controls.
+	// Returns TRUE if the hook handled movement (caller should return early).
+	static MxBool HandleNavOverride(
+		LegoNavController* p_nav,
+		const Vector3& p_curPos,
+		const Vector3& p_curDir,
+		Vector3& p_newPos,
+		Vector3& p_newDir,
+		float p_deltaTime
+	);
+
 	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
 
@@ -100,6 +113,7 @@ constexpr auto CheckRejected = &MultiplayerExt::CheckRejected;
 constexpr auto HandleSDLEvent = &MultiplayerExt::HandleSDLEvent;
 constexpr auto IsThirdPersonCameraActive = &MultiplayerExt::IsThirdPersonCameraActive;
 constexpr auto HandleTouchInput = &MultiplayerExt::HandleTouchInput;
+constexpr auto HandleNavOverride = &MultiplayerExt::HandleNavOverride;
 #else
 constexpr decltype(&MultiplayerExt::HandleCreate) HandleCreate = nullptr;
 constexpr decltype(&MultiplayerExt::HandleWorldEnable) HandleWorldEnable = nullptr;
@@ -116,6 +130,7 @@ constexpr decltype(&MultiplayerExt::CheckRejected) CheckRejected = nullptr;
 constexpr decltype(&MultiplayerExt::HandleSDLEvent) HandleSDLEvent = nullptr;
 constexpr decltype(&MultiplayerExt::IsThirdPersonCameraActive) IsThirdPersonCameraActive = nullptr;
 constexpr decltype(&MultiplayerExt::HandleTouchInput) HandleTouchInput = nullptr;
+constexpr decltype(&MultiplayerExt::HandleNavOverride) HandleNavOverride = nullptr;
 #endif
 
 }; // namespace Extensions
