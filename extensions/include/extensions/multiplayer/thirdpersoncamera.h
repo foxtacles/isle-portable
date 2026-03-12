@@ -69,12 +69,20 @@ public:
 	// Free camera input handling
 	void HandleSDLEvent(SDL_Event* p_event);
 
+	// Auto-switch flags (set by HandleSDLEvent, consumed by caller)
+	bool ConsumeAutoDisable();
+	bool ConsumeAutoEnable();
+
+	float GetOrbitDistance() const { return m_orbitDistance; }
+	void SetOrbitDistance(float p_distance) { m_orbitDistance = p_distance; }
+
 	// Finger-claiming API for split-screen touch zones (left=movement, right=camera)
 	bool TryClaimFinger(const SDL_TouchFingerEvent& event);
 	bool TryReleaseFinger(SDL_FingerID id);
 	bool IsFingerTracked(SDL_FingerID id) const;
 
 	static constexpr float CAMERA_ZONE_X = 0.5f;
+	static constexpr float MIN_DISTANCE = 1.5f;
 
 private:
 	// Orbit camera helpers
@@ -133,8 +141,10 @@ private:
 	static constexpr float ORBIT_TARGET_HEIGHT = 1.5f;
 	static constexpr float MIN_PITCH = 0.05f;
 	static constexpr float MAX_PITCH = 1.4f;
-	static constexpr float MIN_DISTANCE = 1.5f;
 	static constexpr float MAX_DISTANCE = 15.0f;
+
+	bool m_wantsAutoDisable;
+	bool m_wantsAutoEnable;
 };
 
 } // namespace Multiplayer

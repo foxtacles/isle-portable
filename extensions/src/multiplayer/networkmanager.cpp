@@ -644,6 +644,15 @@ void NetworkManager::NotifyPlayerCountChanged()
 	m_callbacks->OnPlayerCountChanged(count);
 }
 
+void NetworkManager::NotifyThirdPersonChanged(bool p_enabled)
+{
+	if (!m_callbacks) {
+		return;
+	}
+
+	m_callbacks->OnThirdPersonChanged(p_enabled);
+}
+
 RemotePlayer* NetworkManager::FindPlayerByROI(LegoROI* roi) const
 {
 	auto it = m_roiToPlayer.find(roi);
