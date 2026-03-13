@@ -79,6 +79,8 @@ public:
 	ThirdPersonCamera& GetThirdPersonCamera() { return m_thirdPersonCamera; }
 
 	void NotifyThirdPersonChanged(bool p_enabled);
+	void NotifyNameBubblesChanged(bool p_enabled);
+	void NotifyAllowCustomizeChanged(bool p_enabled);
 
 	// Called from multiplayer extension when a plant/building entity is clicked.
 	// Returns TRUE if the mutation should be suppressed locally (non-host).

@@ -75,6 +75,7 @@ public:
 
 	float GetOrbitDistance() const { return m_orbitDistance; }
 	void SetOrbitDistance(float p_distance) { m_orbitDistance = p_distance; }
+	void ResetTouchState() { m_touch = {}; }
 
 	// Finger-claiming API for split-screen touch zones (left=movement, right=camera)
 	bool TryClaimFinger(const SDL_TouchFingerEvent& event);

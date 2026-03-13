@@ -310,6 +310,7 @@ void MultiplayerExt::HandleSDLEvent(SDL_Event* p_event)
 	}
 	// Auto-switch 1st → 3rd: zoom-out from 1st person
 	else if (camera.ConsumeAutoEnable()) {
+		camera.ResetTouchState();
 		camera.SetOrbitDistance(Multiplayer::ThirdPersonCamera::MIN_DISTANCE);
 		camera.Enable();
 		s_networkManager->NotifyThirdPersonChanged(true);

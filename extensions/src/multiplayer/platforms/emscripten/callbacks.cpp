@@ -33,6 +33,30 @@ void EmscriptenCallbacks::OnThirdPersonChanged(bool p_enabled)
 		}
 	}, p_enabled ? 1 : 0);
 }
+
+void EmscriptenCallbacks::OnNameBubblesChanged(bool p_enabled)
+{
+	MAIN_THREAD_EM_ASM({
+		var canvas = Module.canvas;
+		if (canvas) {
+			canvas.dispatchEvent(new CustomEvent('nameBubblesChanged', {
+				detail: { enabled: !!$0 }
+			}));
+		}
+	}, p_enabled ? 1 : 0);
+}
+
+void EmscriptenCallbacks::OnAllowCustomizeChanged(bool p_enabled)
+{
+	MAIN_THREAD_EM_ASM({
+		var canvas = Module.canvas;
+		if (canvas) {
+			canvas.dispatchEvent(new CustomEvent('allowCustomizeChanged', {
+				detail: { enabled: !!$0 }
+			}));
+		}
+	}, p_enabled ? 1 : 0);
+}
 // clang-format on
 
 } // namespace Multiplayer

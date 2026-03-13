@@ -22,6 +22,8 @@
 
 #include <SDL3/SDL_stdinc.h>
 
+#include <utility>
+
 using namespace Multiplayer;
 
 static constexpr float TURN_RATE = 10.0f;
@@ -817,16 +819,12 @@ bool ThirdPersonCamera::IsFingerTracked(SDL_FingerID id) const
 
 bool ThirdPersonCamera::ConsumeAutoDisable()
 {
-	bool val = m_wantsAutoDisable;
-	m_wantsAutoDisable = false;
-	return val;
+	return std::exchange(m_wantsAutoDisable, false);
 }
 
 bool ThirdPersonCamera::ConsumeAutoEnable()
 {
-	bool val = m_wantsAutoEnable;
-	m_wantsAutoEnable = false;
-	return val;
+	return std::exchange(m_wantsAutoEnable, false);
 }
 
 void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
@@ -936,16 +934,16 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 				float pinchDelta = m_touch.initialPinchDist - newDist;
 
 				if (!m_active) {
-					// Pinch zoom out (fingers spreading) → auto-enable 3rd person
-					if (pinchDelta < 0) {
+					// Pinch together (zoom out) from 1st person → auto-enable 3rd person
+					if (pinchDelta > 0) {
 						m_wantsAutoEnable = true;
 					}
 					m_touch.initialPinchDist = newDist;
 					break;
 				}
 
-				// Active: check for auto-disable on pinch zoom in at min distance
-				if (m_orbitDistance <= MIN_DISTANCE && pinchDelta > 0) {
+				// Spread apart (zoom in) past min distance → auto-disable to 1st person
+				if (m_orbitDistance <= MIN_DISTANCE && pinchDelta < 0) {
 					m_wantsAutoDisable = true;
 					m_touch.initialPinchDist = newDist;
 					break;
