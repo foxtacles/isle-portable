@@ -404,7 +404,7 @@ MxBool LegoInputManager::ProcessOneEvent(LegoEventNotificationParam& p_param)
 							return TRUE;
 						}
 						if (Extension<MultiplayerExt>::Call(MP::HandleROIClick, roi, p_param).value_or(FALSE) ||
-						Extension<ThirdPersonCameraExt>::Call(TP::HandleROIClick, roi, p_param).value_or(FALSE)) {
+							Extension<ThirdPersonCameraExt>::Call(TP::HandleROIClick, roi, p_param).value_or(FALSE)) {
 							return TRUE;
 						}
 					}

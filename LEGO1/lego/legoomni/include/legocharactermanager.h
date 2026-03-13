@@ -19,7 +19,7 @@ namespace Common
 {
 class CharacterCloner;
 }
-}
+} // namespace Extensions
 
 #pragma warning(disable : 4237)
 
