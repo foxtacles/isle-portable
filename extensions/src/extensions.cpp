@@ -3,6 +3,7 @@
 #include "extensions/multiplayer.h"
 #include "extensions/siloader.h"
 #include "extensions/textureloader.h"
+#include "extensions/thirdpersoncamera.h"
 
 #include <SDL3/SDL_log.h>
 
@@ -19,6 +20,11 @@ void Extensions::Enable(const char* p_key, std::map<std::string, std::string> p_
 				SiLoader::options = std::move(p_options);
 				SiLoader::enabled = true;
 				SiLoader::Initialize();
+			}
+			else if (!SDL_strcasecmp(p_key, "extensions:third person camera")) {
+				ThirdPersonCameraExt::options = std::move(p_options);
+				ThirdPersonCameraExt::enabled = true;
+				ThirdPersonCameraExt::Initialize();
 			}
 			else if (!SDL_strcasecmp(p_key, "extensions:multiplayer")) {
 				MultiplayerExt::options = std::move(p_options);

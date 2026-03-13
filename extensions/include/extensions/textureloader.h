@@ -26,9 +26,12 @@ private:
 	static SDL_Surface* FindTexture(const char* p_name);
 };
 
+namespace TL {
 #ifdef EXTENSIONS
 constexpr auto PatchTexture = &TextureLoader::PatchTexture;
 #else
 constexpr decltype(&TextureLoader::PatchTexture) PatchTexture = nullptr;
 #endif
+} // namespace TL
+
 }; // namespace Extensions

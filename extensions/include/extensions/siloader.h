@@ -70,7 +70,10 @@ std::optional<SiLoader::StreamObject> SiLoader::ReplacedIn(MxDSAction& p_action,
 	((void) (!result.has_value() && (result = checkAtomId(p_args), true)), ...);
 	return result;
 }
+#endif
 
+namespace SI {
+#ifdef EXTENSIONS
 constexpr auto Load = &SiLoader::Load;
 constexpr auto HandleFind = &SiLoader::HandleFind;
 constexpr auto HandleStart = &SiLoader::HandleStart;
@@ -92,4 +95,6 @@ constexpr auto ReplacedIn = [](auto&&... args) -> std::optional<SiLoader::Stream
 	return std::nullopt;
 };
 #endif
+} // namespace SI
+
 }; // namespace Extensions

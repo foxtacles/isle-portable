@@ -4,7 +4,6 @@
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
 #include "extensions/multiplayer/remoteplayer.h"
-#include "extensions/multiplayer/thirdpersoncamera.h"
 #include "extensions/multiplayer/worldstatesync.h"
 #include "mxcore.h"
 #include "mxtypes.h"
@@ -19,8 +18,15 @@
 class LegoEntity;
 class LegoWorld;
 
+namespace Extensions
+{
+class ThirdPersonCameraExt;
+}
+
 namespace Multiplayer
 {
+
+class NameBubbleRenderer;
 
 class NetworkManager : public MxCore {
 public:
@@ -77,8 +83,6 @@ public:
 	void OnBeforeSaveLoad();
 	void OnSaveLoaded();
 
-	ThirdPersonCamera& GetThirdPersonCamera() { return m_thirdPersonCamera; }
-
 	void NotifyThirdPersonChanged(bool p_enabled);
 	void NotifyNameBubblesChanged(bool p_enabled);
 	void NotifyAllowCustomizeChanged(bool p_enabled);
@@ -107,7 +111,6 @@ private:
 	void HandleEmote(const EmoteMsg& p_msg);
 	void HandleCustomize(const CustomizeMsg& p_msg);
 
-	void DeriveDisplayActorIndex(uint8_t p_actorId);
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();
@@ -121,7 +124,7 @@ private:
 	NetworkTransport* m_transport;
 	PlatformCallbacks* m_callbacks;
 	WorldStateSync m_worldSync;
-	ThirdPersonCamera m_thirdPersonCamera;
+	NameBubbleRenderer* m_localNameBubble;
 	std::map<uint32_t, std::unique_ptr<RemotePlayer>> m_remotePlayers;
 	std::map<LegoROI*, RemotePlayer*> m_roiToPlayer;
 
@@ -133,7 +136,6 @@ private:
 	uint8_t m_localWalkAnimId;
 	uint8_t m_localIdleAnimId;
 	uint8_t m_localDisplayActorIndex;
-	bool m_displayActorFrozen;
 	bool m_localAllowRemoteCustomize;
 	bool m_inIsleWorld;
 	bool m_registered;
@@ -146,6 +148,7 @@ private:
 	std::atomic<bool> m_pendingToggleAllowCustomize;
 
 	bool m_showNameBubbles;
+	bool m_lastCameraEnabled;
 
 	static const uint32_t BROADCAST_INTERVAL_MS = 66; // ~15Hz
 	static const uint32_t TIMEOUT_MS = 5000;          // 5 second timeout
