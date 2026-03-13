@@ -42,25 +42,16 @@ public:
 	static std::map<std::string, std::string> options;
 	static bool enabled;
 
-	static std::string relayUrl;
-	static std::string room;
-
-	// Returns TRUE if the name belongs to a multiplayer clone (entity-less ROI).
 	static MxBool IsClonedCharacter(const char* p_name);
-
-	// Called before a save file is loaded. Captures current sky/light state.
 	static void HandleBeforeSaveLoad();
-
-	// Called after a save file is loaded. Re-syncs world state with multiplayer peers.
 	static void HandleSaveLoaded();
-
-	// Returns true if the multiplayer connection was rejected (e.g. room full).
 	static MxBool CheckRejected();
 
-	static void SetNetworkManager(Multiplayer::NetworkManager* p_networkManager);
 	static Multiplayer::NetworkManager* GetNetworkManager();
 
 private:
+	static std::string s_relayUrl;
+	static std::string s_room;
 	static Multiplayer::NetworkManager* s_networkManager;
 	static Multiplayer::NetworkTransport* s_transport;
 	static Multiplayer::PlatformCallbacks* s_callbacks;
@@ -70,7 +61,8 @@ private:
 LEGO1_EXPORT bool IsMultiplayerRejected();
 #endif
 
-namespace MP {
+namespace MP
+{
 #ifdef EXTENSIONS
 constexpr auto HandleCreate = &MultiplayerExt::HandleCreate;
 constexpr auto HandleWorldEnable = &MultiplayerExt::HandleWorldEnable;

@@ -2,8 +2,8 @@
 
 #include "3dmanager/lego3dmanager.h"
 #include "extensions/multiplayer.h"
-#include "extensions/thirdpersoncamera.h"
 #include "extensions/siloader.h"
+#include "extensions/thirdpersoncamera.h"
 #include "islepathactor.h"
 #include "legoanimationmanager.h"
 #include "legobuildingmanager.h"
@@ -418,7 +418,7 @@ void LegoOmni::AddWorld(LegoWorld* p_world)
 {
 	m_worldList->Append(p_world);
 
-	Extension<SiLoader>::Call(SI::HandleWorld, p_world);
+	Extension<SiLoaderExt>::Call(SI::HandleWorld, p_world);
 }
 
 // FUNCTION: LEGO1 0x1005adb0
@@ -486,7 +486,7 @@ LegoWorld* LegoOmni::FindWorld(const MxAtomId& p_atom, MxS32 p_entityid)
 // STUB: BETA10 0x1008e93e
 void LegoOmni::DeleteObject(MxDSAction& p_dsAction)
 {
-	auto result = Extension<SiLoader>::Call(SI::HandleDelete, p_dsAction).value_or(std::nullopt);
+	auto result = Extension<SiLoaderExt>::Call(SI::HandleDelete, p_dsAction).value_or(std::nullopt);
 	if (result && result.value()) {
 		return;
 	}
@@ -681,7 +681,7 @@ void LegoOmni::CreateBackgroundAudio()
 MxResult LegoOmni::Start(MxDSAction* p_dsAction)
 {
 	{
-		auto result = Extension<SiLoader>::Call(SI::HandleStart, *p_dsAction).value_or(std::nullopt);
+		auto result = Extension<SiLoaderExt>::Call(SI::HandleStart, *p_dsAction).value_or(std::nullopt);
 		if (result) {
 			return result.value();
 		}
@@ -744,5 +744,5 @@ void LegoOmni::Resume()
 
 void LegoOmni::LoadSiLoader()
 {
-	Extension<SiLoader>::Call(SI::Load);
+	Extension<SiLoaderExt>::Call(SI::Load);
 }

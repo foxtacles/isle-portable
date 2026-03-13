@@ -7,6 +7,7 @@
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/protocol.h"
 #include "extensions/thirdpersoncamera.h"
+#include "extensions/thirdpersoncamera/controller.h"
 #include "isle_actions.h"
 #include "legoactor.h"
 #include "legoactors.h"
@@ -30,8 +31,8 @@ using namespace Extensions;
 
 std::map<std::string, std::string> MultiplayerExt::options;
 bool MultiplayerExt::enabled = false;
-std::string MultiplayerExt::relayUrl;
-std::string MultiplayerExt::room;
+std::string MultiplayerExt::s_relayUrl;
+std::string MultiplayerExt::s_room;
 Multiplayer::NetworkManager* MultiplayerExt::s_networkManager = nullptr;
 Multiplayer::NetworkTransport* MultiplayerExt::s_transport = nullptr;
 Multiplayer::PlatformCallbacks* MultiplayerExt::s_callbacks = nullptr;
@@ -44,18 +45,17 @@ void MultiplayerExt::Initialize()
 		ThirdPersonCameraExt::Initialize();
 	}
 
-	relayUrl = options["multiplayer:relay url"];
-	room = options["multiplayer:room"];
+	s_relayUrl = options["multiplayer:relay url"];
+	s_room = options["multiplayer:room"];
 
 #ifdef __EMSCRIPTEN__
-	s_transport = new Multiplayer::WebSocketTransport(relayUrl);
+	s_transport = new Multiplayer::WebSocketTransport(s_relayUrl);
 	s_callbacks = new Multiplayer::EmscriptenCallbacks();
 
 	s_networkManager = new Multiplayer::NetworkManager();
 	s_networkManager->Initialize(s_transport, s_callbacks);
 
-	// Third-person camera enabled by default, toggled via WASM export
-	ThirdPersonCameraExt* cam = ThirdPersonCameraExt::GetCamera();
+	ThirdPersonCamera::Controller* cam = ThirdPersonCameraExt::GetCamera();
 	if (cam) {
 		cam->Enable();
 	}
@@ -69,8 +69,8 @@ void MultiplayerExt::Initialize()
 		}
 	}
 
-	if (!relayUrl.empty() && !room.empty()) {
-		s_networkManager->Connect(room.c_str());
+	if (!s_relayUrl.empty() && !s_room.empty()) {
+		s_networkManager->Connect(s_room.c_str());
 	}
 #endif
 }
@@ -109,8 +109,7 @@ MxBool MultiplayerExt::HandleROIClick(LegoROI* p_rootROI, LegoEventNotificationP
 	// Check if it's a remote player
 	Multiplayer::RemotePlayer* remote = mgr->FindPlayerByROI(p_rootROI);
 
-	// Check if it's our own 3rd-person display actor override
-	ThirdPersonCameraExt* cam = ThirdPersonCameraExt::GetCamera();
+	ThirdPersonCamera::Controller* cam = ThirdPersonCameraExt::GetCamera();
 	bool isSelf = (cam && cam->GetDisplayROI() != nullptr && cam->GetDisplayROI() == p_rootROI);
 
 	if (!remote && !isSelf) {
@@ -251,11 +250,6 @@ MxBool MultiplayerExt::CheckRejected()
 	}
 
 	return FALSE;
-}
-
-void MultiplayerExt::SetNetworkManager(Multiplayer::NetworkManager* p_networkManager)
-{
-	s_networkManager = p_networkManager;
 }
 
 Multiplayer::NetworkManager* MultiplayerExt::GetNetworkManager()

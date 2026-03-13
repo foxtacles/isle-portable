@@ -4,6 +4,7 @@
 #include "extensions/common/charactercustomizer.h"
 #include "extensions/multiplayer/namebubblerenderer.h"
 #include "extensions/thirdpersoncamera.h"
+#include "extensions/thirdpersoncamera/controller.h"
 #include "legoanimationmanager.h"
 #include "legogamestate.h"
 #include "legomain.h"
@@ -41,9 +42,9 @@ NetworkManager::NetworkManager()
 	: m_transport(nullptr), m_callbacks(nullptr), m_localNameBubble(nullptr), m_localPeerId(0), m_hostPeerId(0),
 	  m_sequence(0), m_lastBroadcastTime(0), m_lastValidActorId(0), m_localWalkAnimId(0), m_localIdleAnimId(0),
 	  m_localDisplayActorIndex(DISPLAY_ACTOR_NONE), m_localAllowRemoteCustomize(true), m_inIsleWorld(false),
-	  m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false),
-	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
-	  m_showNameBubbles(true), m_lastCameraEnabled(false)
+	  m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false), m_pendingWalkAnim(-1),
+	  m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false), m_showNameBubbles(true),
+	  m_lastCameraEnabled(false)
 {
 }
 
@@ -52,7 +53,7 @@ NetworkManager::~NetworkManager()
 	Shutdown();
 }
 
-static ThirdPersonCameraExt* GetCamera()
+static ThirdPersonCamera::Controller* GetCamera()
 {
 	return ThirdPersonCameraExt::GetCamera();
 }
@@ -62,7 +63,7 @@ MxResult NetworkManager::Tickle()
 	ProcessPendingRequests();
 
 	// Detect camera state changes for platform notification
-	ThirdPersonCameraExt* cam = GetCamera();
+	ThirdPersonCamera::Controller* cam = GetCamera();
 	if (cam) {
 		bool cameraEnabled = cam->IsEnabled();
 		if (cameraEnabled != m_lastCameraEnabled) {
@@ -261,7 +262,7 @@ MxBool NetworkManager::HandleSkyLightMutation(uint8_t p_entityType, uint8_t p_ch
 
 void NetworkManager::ProcessPendingRequests()
 {
-	ThirdPersonCameraExt* cam = GetCamera();
+	ThirdPersonCamera::Controller* cam = GetCamera();
 
 	if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
 		if (cam) {
@@ -342,7 +343,7 @@ void NetworkManager::BroadcastLocalState()
 		return;
 	}
 
-	ThirdPersonCameraExt* cam = GetCamera();
+	ThirdPersonCamera::Controller* cam = GetCamera();
 
 	PlayerStateMsg msg{};
 	msg.header = {MSG_STATE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
@@ -578,7 +579,7 @@ void NetworkManager::SetWalkAnimation(uint8_t p_walkAnimId)
 {
 	if (p_walkAnimId < Common::g_walkAnimCount) {
 		m_localWalkAnimId = p_walkAnimId;
-		ThirdPersonCameraExt* cam = GetCamera();
+		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
 			cam->SetWalkAnimId(p_walkAnimId);
 		}
@@ -589,7 +590,7 @@ void NetworkManager::SetIdleAnimation(uint8_t p_idleAnimId)
 {
 	if (p_idleAnimId < Common::g_idleAnimCount) {
 		m_localIdleAnimId = p_idleAnimId;
-		ThirdPersonCameraExt* cam = GetCamera();
+		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
 			cam->SetIdleAnimId(p_idleAnimId);
 		}
@@ -602,7 +603,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 		return;
 	}
 
-	ThirdPersonCameraExt* cam = GetCamera();
+	ThirdPersonCamera::Controller* cam = GetCamera();
 
 	// Multi-part emotes require 3rd person camera to be active (they need the display clone).
 	// In 1st person mode, skip them entirely to avoid broadcasting an emote the local player can't play.
@@ -623,7 +624,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 void NetworkManager::SetDisplayActorIndex(uint8_t p_displayActorIndex)
 {
 	m_localDisplayActorIndex = p_displayActorIndex;
-	ThirdPersonCameraExt* cam = GetCamera();
+	ThirdPersonCamera::Controller* cam = GetCamera();
 	if (cam) {
 		cam->SetDisplayActorIndex(p_displayActorIndex);
 		cam->FreezeDisplayActor();
@@ -790,7 +791,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 			return;
 		}
 
-		ThirdPersonCameraExt* cam = GetCamera();
+		ThirdPersonCamera::Controller* cam = GetCamera();
 
 		// ApplyCustomizeChange handles null display ROI (advances state without visual)
 		if (cam) {
@@ -813,10 +814,8 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 			// Only play click animation in 3rd person (not visible in 1st person or multi-part emote)
 			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote()) {
 				cam->StopClickAnimation();
-				MxU32 clickAnimId = Common::CharacterCustomizer::PlayClickAnimation(
-					cam->GetDisplayROI(),
-					cam->GetCustomizeState()
-				);
+				MxU32 clickAnimId =
+					Common::CharacterCustomizer::PlayClickAnimation(cam->GetDisplayROI(), cam->GetCustomizeState());
 				cam->SetClickAnimObjectId(clickAnimId);
 			}
 		}

@@ -542,6 +542,7 @@ if (ISLE_EXTENSIONS)
 
     # Third person camera extension
     extensions/src/thirdpersoncamera.cpp
+    extensions/src/thirdpersoncamera/controller.cpp
     extensions/src/thirdpersoncamera/orbitcamera.cpp
     extensions/src/thirdpersoncamera/inputhandler.cpp
     extensions/src/thirdpersoncamera/displayactor.cpp
