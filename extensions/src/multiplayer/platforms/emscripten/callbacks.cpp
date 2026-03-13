@@ -22,42 +22,33 @@ void EmscriptenCallbacks::OnPlayerCountChanged(int p_count)
 }
 
 // clang-format off
-void EmscriptenCallbacks::OnThirdPersonChanged(bool p_enabled)
+static void DispatchBoolEvent(const char* p_name, bool p_value)
 {
 	MAIN_THREAD_EM_ASM({
 		var canvas = Module.canvas;
 		if (canvas) {
-			canvas.dispatchEvent(new CustomEvent('thirdPersonChanged', {
-				detail: { enabled: !!$0 }
+			canvas.dispatchEvent(new CustomEvent(UTF8ToString($0), {
+				detail: { enabled: !!$1 }
 			}));
 		}
-	}, p_enabled ? 1 : 0);
+	}, p_name, p_value ? 1 : 0);
+}
+// clang-format on
+
+void EmscriptenCallbacks::OnThirdPersonChanged(bool p_enabled)
+{
+	DispatchBoolEvent("thirdPersonChanged", p_enabled);
 }
 
 void EmscriptenCallbacks::OnNameBubblesChanged(bool p_enabled)
 {
-	MAIN_THREAD_EM_ASM({
-		var canvas = Module.canvas;
-		if (canvas) {
-			canvas.dispatchEvent(new CustomEvent('nameBubblesChanged', {
-				detail: { enabled: !!$0 }
-			}));
-		}
-	}, p_enabled ? 1 : 0);
+	DispatchBoolEvent("nameBubblesChanged", p_enabled);
 }
 
 void EmscriptenCallbacks::OnAllowCustomizeChanged(bool p_enabled)
 {
-	MAIN_THREAD_EM_ASM({
-		var canvas = Module.canvas;
-		if (canvas) {
-			canvas.dispatchEvent(new CustomEvent('allowCustomizeChanged', {
-				detail: { enabled: !!$0 }
-			}));
-		}
-	}, p_enabled ? 1 : 0);
+	DispatchBoolEvent("allowCustomizeChanged", p_enabled);
 }
-// clang-format on
 
 } // namespace Multiplayer
 
