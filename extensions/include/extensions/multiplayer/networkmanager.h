@@ -54,7 +54,6 @@ public:
 	void SetWalkAnimation(uint8_t p_walkAnimId);
 	void SetIdleAnimation(uint8_t p_idleAnimId);
 	void SendEmote(uint8_t p_emoteId);
-	void SetDisplayActorIndex(uint8_t p_displayActorIndex);
 
 	// Thread-safe request methods for cross-thread callers (e.g. WASM exports
 	// running on the browser main thread).  Deferred to the game thread in Tickle().
@@ -133,9 +132,6 @@ private:
 	uint32_t m_sequence;
 	uint32_t m_lastBroadcastTime;
 	uint8_t m_lastValidActorId;
-	uint8_t m_localWalkAnimId;
-	uint8_t m_localIdleAnimId;
-	uint8_t m_localDisplayActorIndex;
 	bool m_localAllowRemoteCustomize;
 	bool m_inIsleWorld;
 	bool m_registered;

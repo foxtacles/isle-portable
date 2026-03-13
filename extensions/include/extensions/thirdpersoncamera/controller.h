@@ -37,7 +37,9 @@ public:
 	void Tick(float p_deltaTime);
 
 	void SetWalkAnimId(uint8_t p_walkAnimId);
+	uint8_t GetWalkAnimId() const { return m_animator.GetWalkAnimId(); }
 	void SetIdleAnimId(uint8_t p_idleAnimId);
+	uint8_t GetIdleAnimId() const { return m_animator.GetIdleAnimId(); }
 	void TriggerEmote(uint8_t p_emoteId);
 	bool IsInMultiPartEmote() const;
 	int8_t GetFrozenEmoteId() const;
