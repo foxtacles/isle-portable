@@ -21,7 +21,6 @@
 #include "roi/legoroi.h"
 
 #include <SDL3/SDL_stdinc.h>
-
 #include <utility>
 
 using namespace Multiplayer;
@@ -43,9 +42,8 @@ ThirdPersonCamera::ThirdPersonCamera()
 	: m_enabled(false), m_active(false), m_pendingWorldTransition(false), m_playerROI(nullptr),
 	  m_displayActorIndex(DISPLAY_ACTOR_NONE), m_displayROI(nullptr),
 	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true}), m_showNameBubble(true),
-	  m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE),
-	  m_absoluteYaw(DEFAULT_ORBIT_YAW), m_smoothedSpeed(0.0f), m_touch{},
-	  m_wantsAutoDisable(false), m_wantsAutoEnable(false)
+	  m_orbitPitch(DEFAULT_ORBIT_PITCH), m_orbitDistance(DEFAULT_ORBIT_DISTANCE), m_absoluteYaw(DEFAULT_ORBIT_YAW),
+	  m_smoothedSpeed(0.0f), m_touch{}, m_wantsAutoDisable(false), m_wantsAutoEnable(false)
 {
 	SDL_memset(m_displayUniqueName, 0, sizeof(m_displayUniqueName));
 }
@@ -81,6 +79,7 @@ void ThirdPersonCamera::Disable()
 	m_active = false;
 	m_pendingWorldTransition = false;
 	DestroyNameBubble();
+	m_animator.StopROISounds();
 	DestroyDisplayClone();
 	m_animator.ClearRideAnimation();
 	m_animator.ClearAll();
@@ -399,6 +398,7 @@ void ThirdPersonCamera::OnWorldDisabled(LegoWorld* p_world)
 	m_pendingWorldTransition = false;
 	m_playerROI = nullptr;
 	DestroyNameBubble();
+	m_animator.StopROISounds();
 	DestroyDisplayClone();
 	m_animator.ClearRideAnimation();
 	m_animator.ClearAll();
@@ -871,8 +871,7 @@ void ThirdPersonCamera::HandleSDLEvent(SDL_Event* p_event)
 	case SDL_EVENT_FINGER_DOWN: {
 		// Finger may already be claimed via TryClaimFinger (called from HandleTouchInput).
 		// Only register if not already tracked and in the camera zone.
-		if (!IsFingerTracked(p_event->tfinger.fingerID) && m_touch.count < 2 &&
-			p_event->tfinger.x >= CAMERA_ZONE_X) {
+		if (!IsFingerTracked(p_event->tfinger.fingerID) && m_touch.count < 2 && p_event->tfinger.x >= CAMERA_ZONE_X) {
 			int idx = m_touch.count;
 			m_touch.id[idx] = p_event->tfinger.fingerID;
 			m_touch.x[idx] = p_event->tfinger.x;

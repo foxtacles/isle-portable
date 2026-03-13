@@ -125,7 +125,7 @@ private:
 	// Orbit camera state
 	float m_orbitPitch;
 	float m_orbitDistance;
-	float m_absoluteYaw;  // Camera yaw in world space (decoupled from player facing)
+	float m_absoluteYaw;   // Camera yaw in world space (decoupled from player facing)
 	float m_smoothedSpeed; // Extension-managed velocity for smooth acceleration/deceleration
 
 	// Touch gesture tracking
