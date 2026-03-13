@@ -65,6 +65,7 @@ public:
 	void RequestToggleNameBubbles() { m_pendingToggleNameBubbles.store(true, std::memory_order_relaxed); }
 	void RequestToggleAllowCustomize() { m_pendingToggleAllowCustomize.store(true, std::memory_order_relaxed); }
 
+	bool IsInIsleWorld() const { return m_inIsleWorld; }
 	bool GetShowNameBubbles() const { return m_showNameBubbles; }
 
 	RemotePlayer* FindPlayerByROI(LegoROI* roi) const;

@@ -295,7 +295,7 @@ MxBool MultiplayerExt::IsClonedCharacter(const char* p_name)
 
 void MultiplayerExt::HandleSDLEvent(SDL_Event* p_event)
 {
-	if (!s_networkManager) {
+	if (!s_networkManager || !s_networkManager->IsInIsleWorld()) {
 		return;
 	}
 

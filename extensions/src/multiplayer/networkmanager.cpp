@@ -155,9 +155,8 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		return;
 	}
 
-	m_thirdPersonCamera.OnWorldEnabled(p_world);
-
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
+		m_thirdPersonCamera.OnWorldEnabled(p_world);
 		m_inIsleWorld = true;
 		m_worldSync.SetInIsleWorld(true);
 
@@ -188,9 +187,8 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		return;
 	}
 
-	m_thirdPersonCamera.OnWorldDisabled(p_world);
-
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
+		m_thirdPersonCamera.OnWorldDisabled(p_world);
 		m_inIsleWorld = false;
 		m_worldSync.SetInIsleWorld(false);
 		for (auto& [peerId, player] : m_remotePlayers) {
