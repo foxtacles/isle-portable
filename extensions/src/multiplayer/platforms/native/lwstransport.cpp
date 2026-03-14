@@ -72,7 +72,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	bool useSSL = (SDL_strcmp(protocol, "wss") == 0 || SDL_strcmp(protocol, "https") == 0);
 	SDL_Log("[Multiplayer] Connecting to %s://%s:%d/%s (SSL=%d)", protocol, address, port, path, useSSL);
 
-	lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
+	lws_set_log_level(LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO | LLL_DEBUG | LLL_CLIENT, nullptr);
 
 	struct lws_context_creation_info ctxInfo;
 	SDL_memset(&ctxInfo, 0, sizeof(ctxInfo));
