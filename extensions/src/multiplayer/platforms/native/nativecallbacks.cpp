@@ -17,6 +17,21 @@ void NativeCallbacks::OnPlayerCountChanged(int p_count)
 	}
 }
 
+void NativeCallbacks::OnThirdPersonChanged(bool p_enabled)
+{
+	SDL_Log("[Multiplayer] Third person camera: %s", p_enabled ? "enabled" : "disabled");
+}
+
+void NativeCallbacks::OnNameBubblesChanged(bool p_enabled)
+{
+	SDL_Log("[Multiplayer] Name bubbles: %s", p_enabled ? "enabled" : "disabled");
+}
+
+void NativeCallbacks::OnAllowCustomizeChanged(bool p_enabled)
+{
+	SDL_Log("[Multiplayer] Allow customization: %s", p_enabled ? "enabled" : "disabled");
+}
+
 } // namespace Multiplayer
 
 #endif // !__EMSCRIPTEN__
