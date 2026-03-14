@@ -7,7 +7,7 @@
 
 using namespace Extensions::ThirdPersonCamera;
 
-InputHandler::InputHandler() : m_touch{}, m_wantsAutoDisable(false), m_wantsAutoEnable(false)
+InputHandler::InputHandler() : m_touch{}, m_wantsAutoDisable(false), m_wantsAutoEnable(false), m_rightButtonHeld(false)
 {
 }
 
@@ -103,7 +103,7 @@ void InputHandler::HandleSDLEvent(SDL_Event* p_event, OrbitCamera& p_orbit, bool
 		if (!p_active) {
 			break;
 		}
-		if (p_event->motion.state & SDL_BUTTON_RMASK) {
+		if (m_rightButtonHeld) {
 			p_orbit.AdjustYaw(-p_event->motion.xrel * 0.005f);
 			p_orbit.AdjustPitch(p_event->motion.yrel * 0.005f);
 			p_orbit.ClampPitch();
@@ -112,12 +112,15 @@ void InputHandler::HandleSDLEvent(SDL_Event* p_event, OrbitCamera& p_orbit, bool
 
 	case SDL_EVENT_MOUSE_BUTTON_DOWN:
 	case SDL_EVENT_MOUSE_BUTTON_UP: {
+		if (p_event->button.button == SDL_BUTTON_RIGHT) {
+			m_rightButtonHeld = p_event->button.down;
+		}
 		if (!p_active) {
 			break;
 		}
 		SDL_Window* window = SDL_GetWindowFromID(p_event->button.windowID);
 		if (window) {
-			SDL_SetWindowRelativeMouseMode(window, SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_RMASK);
+			SDL_SetWindowRelativeMouseMode(window, m_rightButtonHeld);
 		}
 		break;
 	}
