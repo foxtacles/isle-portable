@@ -61,11 +61,14 @@ void LwsTransport::Connect(const char* p_roomId)
 		return;
 	}
 
+	lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
+
 	struct lws_context_creation_info ctxInfo;
 	SDL_memset(&ctxInfo, 0, sizeof(ctxInfo));
 	ctxInfo.port = CONTEXT_PORT_NO_LISTEN;
 	ctxInfo.protocols = s_protocols;
 
+	SDL_Log("[Multiplayer] Creating lws context...");
 	m_context = lws_create_context(&ctxInfo);
 	if (!m_context) {
 		SDL_Log("[Multiplayer] Failed to create lws context");
@@ -88,7 +91,9 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 
+	SDL_Log("[Multiplayer] Connecting to %s:%d%s...", address, port, fullPath.c_str());
 	m_wsi = lws_client_connect_via_info(&connInfo);
+	SDL_Log("[Multiplayer] lws_client_connect_via_info returned %p", (void*) m_wsi);
 	if (!m_wsi) {
 		SDL_Log("[Multiplayer] Failed to initiate WebSocket connection to %s:%d%s", address, port, fullPath.c_str());
 		lws_context_destroy(m_context);
@@ -145,9 +150,9 @@ size_t LwsTransport::Receive(std::function<void(const uint8_t*, size_t)> p_callb
 		return 0;
 	}
 
-	// Non-blocking service: processes pending network I/O and fires lws callbacks
-	// which populate m_recvQueue and drain m_sendQueue
+	SDL_Log("[Multiplayer] lws_service enter");
 	lws_service(m_context, 0);
+	SDL_Log("[Multiplayer] lws_service exit");
 
 	size_t count = m_recvQueue.size();
 	while (!m_recvQueue.empty()) {
@@ -163,6 +168,7 @@ int LwsTransport::HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, si
 {
 	switch (p_reason) {
 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
+		SDL_Log("[Multiplayer] WebSocket connection established");
 		m_connected = true;
 		m_wasEverConnected = true;
 		break;
@@ -189,13 +195,21 @@ int LwsTransport::HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, si
 		break;
 
 	case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+		SDL_Log("[Multiplayer] WebSocket connection error: %s", p_in ? static_cast<const char*>(p_in) : "unknown");
+		m_disconnected = true;
+		m_connected = false;
+		m_wsi = nullptr;
+		break;
+
 	case LWS_CALLBACK_CLIENT_CLOSED:
+		SDL_Log("[Multiplayer] WebSocket connection closed");
 		m_disconnected = true;
 		m_connected = false;
 		m_wsi = nullptr;
 		break;
 
 	default:
+		SDL_Log("[Multiplayer] lws callback reason=%d", p_reason);
 		break;
 	}
 
