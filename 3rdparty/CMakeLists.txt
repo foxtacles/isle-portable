@@ -81,7 +81,6 @@ if(ISLE_USE_WEBSOCKETS)
             mbedtls
             URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.5/mbedtls-3.6.5.tar.bz2
             URL_MD5 bc79602daf85f1cf35a686b53056de58
-            EXCLUDE_FROM_ALL
         )
         block()
             set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
