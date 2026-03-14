@@ -85,7 +85,6 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.host = address;
 	connInfo.origin = address;
 	connInfo.ssl_connection = 0;
-	connInfo.protocol = s_protocols[0].name;
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 
