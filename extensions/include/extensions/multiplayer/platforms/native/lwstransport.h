@@ -3,7 +3,10 @@
 #ifndef __EMSCRIPTEN__
 
 #include "extensions/multiplayer/networktransport.h"
+#include "mxcriticalsection.h"
+#include "mxthread.h"
 
+#include <atomic>
 #include <deque>
 #include <string>
 #include <vector>
@@ -14,7 +17,21 @@ struct lws;
 namespace Multiplayer
 {
 
+class LwsTransport;
+
+class LwsServiceThread : public MxThread {
+public:
+	LwsServiceThread() : m_transport(nullptr) {}
+	MxResult Run() override;
+	void SetTransport(LwsTransport* p_transport) { m_transport = p_transport; }
+
+private:
+	LwsTransport* m_transport;
+};
+
 class LwsTransport : public NetworkTransport {
+	friend class LwsServiceThread;
+
 public:
 	LwsTransport(const std::string& p_relayBaseUrl);
 	~LwsTransport() override;
@@ -31,16 +48,23 @@ public:
 	int HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, size_t p_len);
 
 private:
+	void ServiceLoop();
+
 	std::string m_relayBaseUrl;
 	struct lws_context* m_context;
-	struct lws* m_wsi;
-	bool m_connected;
-	bool m_disconnected;
-	bool m_wasEverConnected;
+	std::atomic<struct lws*> m_wsi;
+	std::atomic<bool> m_connected;
+	std::atomic<bool> m_disconnected;
+	std::atomic<bool> m_wasEverConnected;
 
+	MxCriticalSection m_sendCS;
+	MxCriticalSection m_recvCS;
 	std::deque<std::vector<uint8_t>> m_sendQueue;
 	std::deque<std::vector<uint8_t>> m_recvQueue;
 	std::vector<uint8_t> m_fragment;
+
+	LwsServiceThread m_serviceThread;
+	std::atomic<bool> m_wantWritable;
 };
 
 } // namespace Multiplayer
