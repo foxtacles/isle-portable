@@ -72,7 +72,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	bool useSSL = (SDL_strcmp(protocol, "wss") == 0 || SDL_strcmp(protocol, "https") == 0);
 	SDL_Log("[Multiplayer] Connecting to %s://%s:%d/%s (SSL=%d)", protocol, address, port, path, useSSL);
 
-	lws_set_log_level(LLL_ERR | LLL_WARN | LLL_NOTICE | LLL_INFO | LLL_DEBUG | LLL_CLIENT, nullptr);
+	lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
 
 	struct lws_context_creation_info ctxInfo;
 	SDL_memset(&ctxInfo, 0, sizeof(ctxInfo));
@@ -102,7 +102,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.path = fullPath.c_str();
 	connInfo.host = address;
 	connInfo.origin = address;
-	connInfo.ssl_connection = useSSL ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK) : 0;
+	connInfo.ssl_connection = useSSL ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_INSECURE) : 0;
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 
