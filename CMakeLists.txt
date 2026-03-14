@@ -125,7 +125,6 @@ if (DOWNLOAD_DEPENDENCIES)
     EXCLUDE_FROM_ALL
   )
   block()
-    set(BUILD_TESTING OFF)
     set(BUILD_DOCS off)
     set(BUILD_SHARED_LIBS off)
     FetchContent_MakeAvailable(iniparser)
