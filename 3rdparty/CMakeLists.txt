@@ -80,7 +80,7 @@ if(ISLE_USE_WEBSOCKETS)
         FetchContent_Declare(
             mbedtls
             URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.3.tar.gz
-            URL_MD5 0086726e12dd3eb55b8f867e22ab3c27
+            URL_MD5 5d5a5cebe86fe8cd8cfc9bd1fbd45eb0
             EXCLUDE_FROM_ALL
         )
         block()
