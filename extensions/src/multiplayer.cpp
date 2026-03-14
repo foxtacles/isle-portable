@@ -18,6 +18,7 @@
 #include "misc.h"
 #include "roi/legoroi.h"
 
+#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 
 #ifdef __EMSCRIPTEN__
@@ -50,16 +51,20 @@ void MultiplayerExt::Initialize()
 
 	s_relayUrl = options["multiplayer:relay url"];
 	s_room = options["multiplayer:room"];
+	SDL_Log("[Multiplayer] Initializing: relay=%s room=%s", s_relayUrl.c_str(), s_room.c_str());
 
 #ifdef __EMSCRIPTEN__
 	s_transport = new Multiplayer::WebSocketTransport(s_relayUrl);
 	s_callbacks = new Multiplayer::EmscriptenCallbacks();
 #elif defined(ISLE_USE_WEBSOCKETS)
+	SDL_Log("[Multiplayer] Creating LwsTransport...");
 	s_transport = new Multiplayer::LwsTransport(s_relayUrl);
+	SDL_Log("[Multiplayer] Creating NativeCallbacks...");
 	s_callbacks = new Multiplayer::NativeCallbacks();
 #endif
 
 #if defined(__EMSCRIPTEN__) || defined(ISLE_USE_WEBSOCKETS)
+	SDL_Log("[Multiplayer] Creating NetworkManager...");
 	s_networkManager = new Multiplayer::NetworkManager();
 	s_networkManager->Initialize(s_transport, s_callbacks);
 

@@ -70,6 +70,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	}
 
 	bool useSSL = (SDL_strcmp(protocol, "wss") == 0 || SDL_strcmp(protocol, "https") == 0);
+	SDL_Log("[Multiplayer] Connecting to %s://%s:%d/%s (SSL=%d)", protocol, address, port, path, useSSL);
 
 	lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
 
@@ -81,12 +82,14 @@ void LwsTransport::Connect(const char* p_roomId)
 		ctxInfo.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	}
 
+	SDL_Log("[Multiplayer] Creating lws context...");
 	m_context = lws_create_context(&ctxInfo);
 	if (!m_context) {
 		SDL_Log("[Multiplayer] Failed to create lws context");
 		m_disconnected.store(true);
 		return;
 	}
+	SDL_Log("[Multiplayer] lws context created successfully");
 
 	// path from lws_parse_uri does not include the leading '/', so prepend it
 	std::string fullPath = std::string("/") + path;
@@ -103,6 +106,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 
+	SDL_Log("[Multiplayer] Initiating client connection...");
 	struct lws* wsi = lws_client_connect_via_info(&connInfo);
 	if (!wsi) {
 		SDL_Log("[Multiplayer] Failed to initiate WebSocket connection to %s:%d%s", address, port, fullPath.c_str());
