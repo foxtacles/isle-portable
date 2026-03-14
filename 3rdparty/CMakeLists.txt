@@ -79,8 +79,8 @@ if(ISLE_USE_WEBSOCKETS)
         # Fetch mbedTLS for TLS/WSS support in libwebsockets
         FetchContent_Declare(
             mbedtls
-            URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.3.tar.gz
-            URL_MD5 5d5a5cebe86fe8cd8cfc9bd1fbd45eb0
+            URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.5.tar.gz
+            URL_MD5 9b6b45aec0f07b10b5ce5d219c3016f8
             EXCLUDE_FROM_ALL
         )
         block()
