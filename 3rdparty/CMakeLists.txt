@@ -87,6 +87,8 @@ if(ISLE_USE_WEBSOCKETS)
             set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
             set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
             set(BUILD_SHARED_LIBS OFF)
+            # Suppress CMake deprecation error for mbedTLS's old cmake_minimum_required
+            set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
             FetchContent_MakeAvailable(mbedtls)
 
             # Point lws at the mbedTLS targets so it skips its own find logic
