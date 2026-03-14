@@ -69,12 +69,17 @@ void LwsTransport::Connect(const char* p_roomId)
 		return;
 	}
 
+	bool useSSL = (SDL_strcmp(protocol, "wss") == 0 || SDL_strcmp(protocol, "https") == 0);
+
 	lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
 
 	struct lws_context_creation_info ctxInfo;
 	SDL_memset(&ctxInfo, 0, sizeof(ctxInfo));
 	ctxInfo.port = CONTEXT_PORT_NO_LISTEN;
 	ctxInfo.protocols = s_protocols;
+	if (useSSL) {
+		ctxInfo.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+	}
 
 	m_context = lws_create_context(&ctxInfo);
 	if (!m_context) {
@@ -94,7 +99,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.path = fullPath.c_str();
 	connInfo.host = address;
 	connInfo.origin = address;
-	connInfo.ssl_connection = 0;
+	connInfo.ssl_connection = useSSL ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK) : 0;
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 

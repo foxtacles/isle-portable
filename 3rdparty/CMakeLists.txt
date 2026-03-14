@@ -75,6 +75,32 @@ endif()
 if(ISLE_USE_WEBSOCKETS)
     if(DOWNLOAD_DEPENDENCIES)
         include(FetchContent)
+
+        # Fetch mbedTLS for TLS/WSS support in libwebsockets
+        FetchContent_Declare(
+            mbedtls
+            URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.3.tar.gz
+            URL_MD5 0086726e12dd3eb55b8f867e22ab3c27
+            EXCLUDE_FROM_ALL
+        )
+        block()
+            set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+            set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+            set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+            FetchContent_MakeAvailable(mbedtls)
+        endblock()
+
+        # Point lws at the mbedTLS targets so it skips its own find logic
+        set(LWS_MBEDTLS_INCLUDE_DIRS
+            "${mbedtls_SOURCE_DIR}/include"
+            "${mbedtls_BINARY_DIR}/include"
+            CACHE STRING "" FORCE
+        )
+        set(LWS_MBEDTLS_LIBRARIES
+            "mbedtls;mbedx509;mbedcrypto"
+            CACHE STRING "" FORCE
+        )
+
         FetchContent_Declare(
             libwebsockets
             GIT_REPOSITORY "https://github.com/warmcat/libwebsockets.git"
@@ -82,7 +108,8 @@ if(ISLE_USE_WEBSOCKETS)
             EXCLUDE_FROM_ALL
         )
         block()
-            set(LWS_WITH_SSL OFF CACHE BOOL "" FORCE)
+            set(LWS_WITH_SSL ON CACHE BOOL "" FORCE)
+            set(LWS_WITH_MBEDTLS ON CACHE BOOL "" FORCE)
             set(LWS_WITH_SHARED OFF CACHE BOOL "" FORCE)
             set(LWS_WITH_STATIC ON CACHE BOOL "" FORCE)
             set(LWS_WITHOUT_TESTAPPS ON CACHE BOOL "" FORCE)
