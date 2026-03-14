@@ -35,7 +35,7 @@ MxResult LwsServiceThread::Run()
 
 LwsTransport::LwsTransport(const std::string& p_relayBaseUrl)
 	: m_relayBaseUrl(p_relayBaseUrl), m_context(nullptr), m_wsi(nullptr), m_connected(false), m_disconnected(false),
-	  m_wasEverConnected(false), m_wantWritable(false)
+	  m_wasEverConnected(false), m_serviceThread(nullptr), m_wantWritable(false)
 {
 }
 
@@ -108,15 +108,27 @@ void LwsTransport::Connect(const char* p_roomId)
 	}
 
 	m_wsi.store(wsi);
-	m_serviceThread.SetTransport(this);
-	m_serviceThread.Start(0x1000, 0);
+	m_serviceThread = new LwsServiceThread();
+	m_serviceThread->SetTransport(this);
+	if (m_serviceThread->Start(0x1000, 0) != SUCCESS) {
+		SDL_Log("[Multiplayer] Failed to start WebSocket service thread");
+		delete m_serviceThread;
+		m_serviceThread = nullptr;
+		m_wsi.store(nullptr);
+		lws_context_destroy(m_context);
+		m_context = nullptr;
+		m_disconnected.store(true);
+		return;
+	}
 }
 
 void LwsTransport::Disconnect()
 {
 	if (m_context) {
 		lws_cancel_service(m_context);
-		m_serviceThread.Terminate();
+		m_serviceThread->Terminate();
+		delete m_serviceThread;
+		m_serviceThread = nullptr;
 
 		lws_context_destroy(m_context);
 		m_context = nullptr;

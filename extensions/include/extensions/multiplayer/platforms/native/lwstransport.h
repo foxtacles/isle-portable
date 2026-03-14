@@ -63,7 +63,7 @@ private:
 	std::deque<std::vector<uint8_t>> m_recvQueue;
 	std::vector<uint8_t> m_fragment;
 
-	LwsServiceThread m_serviceThread;
+	LwsServiceThread* m_serviceThread;
 	std::atomic<bool> m_wantWritable;
 };
 
