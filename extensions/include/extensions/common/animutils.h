@@ -1,14 +1,19 @@
 #pragma once
 
+#include "mxgeometry/mxmatrix.h"
 #include "mxtypes.h"
+#include "realtime/vector.h"
 #include "roi/legoroi.h"
 
 #include <map>
 #include <string>
+#include <vector>
 
 class LegoAnim;
 
-namespace Multiplayer
+namespace Extensions
+{
+namespace Common
 {
 
 namespace AnimUtils
@@ -30,8 +35,7 @@ struct AnimCache {
 
 	AnimCache(const AnimCache&) = delete;
 	AnimCache& operator=(const AnimCache&) = delete;
-	AnimCache(AnimCache&& p_other) noexcept
-		: anim(p_other.anim), roiMap(p_other.roiMap), roiMapSize(p_other.roiMapSize)
+	AnimCache(AnimCache&& p_other) noexcept : anim(p_other.anim), roiMap(p_other.roiMap), roiMapSize(p_other.roiMapSize)
 	{
 		p_other.roiMap = nullptr;
 		p_other.roiMapSize = 0;
@@ -57,16 +61,15 @@ struct AnimCache {
 void BuildROIMap(
 	LegoAnim* p_anim,
 	LegoROI* p_rootROI,
-	LegoROI* p_extraROI,
+	LegoROI** p_extraROIs,
+	int p_extraROICount,
 	LegoROI**& p_roiMap,
 	MxU32& p_roiMapSize
 );
 
-AnimCache* GetOrBuildAnimCache(
-	std::map<std::string, AnimCache>& p_cacheMap,
-	LegoROI* p_roi,
-	const char* p_animName
-);
+void CollectUnmatchedNodes(LegoAnim* p_anim, LegoROI* p_rootROI, std::vector<std::string>& p_unmatchedNames);
+
+AnimCache* GetOrBuildAnimCache(std::map<std::string, AnimCache>& p_cacheMap, LegoROI* p_roi, const char* p_animName);
 
 inline void EnsureROIMapVisibility(LegoROI** p_roiMap, MxU32 p_roiMapSize)
 {
@@ -77,6 +80,17 @@ inline void EnsureROIMapVisibility(LegoROI** p_roiMap, MxU32 p_roiMapSize)
 	}
 }
 
+// Flip a matrix from forward-z to backward-z (or vice versa) in place.
+inline void FlipMatrixDirection(MxMatrix& p_mat)
+{
+	Vector3 right(p_mat[0]);
+	Vector3 up(p_mat[1]);
+	Vector3 direction(p_mat[2]);
+	direction *= -1.0f;
+	right.EqualsCross(up, direction);
+}
+
 } // namespace AnimUtils
 
-} // namespace Multiplayer
+} // namespace Common
+} // namespace Extensions

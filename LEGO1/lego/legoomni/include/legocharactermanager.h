@@ -2,6 +2,7 @@
 #define LEGOCHARACTERMANAGER_H
 
 #include "decomp.h"
+#include "extensions/fwd.h"
 #include "mxstl/stlcompat.h"
 #include "mxtypes.h"
 #include "mxvariable.h"
@@ -13,10 +14,6 @@ class LegoActor;
 class LegoExtraActor;
 class LegoStorage;
 class LegoROI;
-namespace Multiplayer
-{
-class CharacterCloner;
-}
 
 #pragma warning(disable : 4237)
 
@@ -102,7 +99,7 @@ public:
 	static const char* GetCustomizeAnimFile() { return g_customizeAnimFile; }
 
 private:
-	friend class Multiplayer::CharacterCloner;
+	friend class Extensions::Common::CharacterCloner;
 
 	LegoROI* CreateActorROI(const char* p_key);
 	void RemoveROI(LegoROI* p_roi);

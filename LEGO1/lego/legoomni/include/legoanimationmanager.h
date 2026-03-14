@@ -2,6 +2,7 @@
 #define LEGOANIMATIONMANAGER_H
 
 #include "decomp.h"
+#include "extensions/fwd.h"
 #include "lego1_export.h"
 #include "legolocations.h"
 #include "legomain.h"
@@ -199,12 +200,12 @@ public:
 
 	LEGO1_EXPORT static void configureLegoAnimationManager(MxS32 p_legoAnimationManagerConfig);
 
-	void SetMaxAllowedExtras(MxU32 p_maxAllowedExtras) { m_maxAllowedExtras = p_maxAllowedExtras; }
-
 	// SYNTHETIC: LEGO1 0x1005ed10
 	// LegoAnimationManager::`scalar deleting destructor'
 
 private:
+	friend class Multiplayer::NetworkManager;
+
 	void Init();
 	MxResult FUN_100605e0(
 		MxU32 p_index,

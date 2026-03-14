@@ -4,7 +4,6 @@
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
 #include "extensions/multiplayer/remoteplayer.h"
-#include "extensions/multiplayer/thirdpersoncamera.h"
 #include "extensions/multiplayer/worldstatesync.h"
 #include "mxcore.h"
 #include "mxtypes.h"
@@ -19,8 +18,15 @@
 class LegoEntity;
 class LegoWorld;
 
+namespace Extensions
+{
+class ThirdPersonCameraExt;
+}
+
 namespace Multiplayer
 {
+
+class NameBubbleRenderer;
 
 class NetworkManager : public MxCore {
 public:
@@ -43,12 +49,11 @@ public:
 	void Connect(const char* p_roomId);
 	void Disconnect();
 	bool IsConnected() const;
-	bool WasRejected() const;
+	bool WasDisconnected() const;
 
 	void SetWalkAnimation(uint8_t p_walkAnimId);
 	void SetIdleAnimation(uint8_t p_idleAnimId);
 	void SendEmote(uint8_t p_emoteId);
-	void SetDisplayActorIndex(uint8_t p_displayActorIndex);
 
 	// Thread-safe request methods for cross-thread callers (e.g. WASM exports
 	// running on the browser main thread).  Deferred to the game thread in Tickle().
@@ -65,6 +70,7 @@ public:
 	void RequestToggleNameBubbles() { m_pendingToggleNameBubbles.store(true, std::memory_order_relaxed); }
 	void RequestToggleAllowCustomize() { m_pendingToggleAllowCustomize.store(true, std::memory_order_relaxed); }
 
+	bool IsInIsleWorld() const { return m_inIsleWorld; }
 	bool GetShowNameBubbles() const { return m_showNameBubbles; }
 
 	RemotePlayer* FindPlayerByROI(LegoROI* roi) const;
@@ -76,7 +82,9 @@ public:
 	void OnBeforeSaveLoad();
 	void OnSaveLoaded();
 
-	ThirdPersonCamera& GetThirdPersonCamera() { return m_thirdPersonCamera; }
+	void NotifyThirdPersonChanged(bool p_enabled);
+	void NotifyNameBubblesChanged(bool p_enabled);
+	void NotifyAllowCustomizeChanged(bool p_enabled);
 
 	// Called from multiplayer extension when a plant/building entity is clicked.
 	// Returns TRUE if the mutation should be suppressed locally (non-host).
@@ -102,12 +110,12 @@ private:
 	void HandleEmote(const EmoteMsg& p_msg);
 	void HandleCustomize(const CustomizeMsg& p_msg);
 
-	void DeriveDisplayActorIndex(uint8_t p_actorId);
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();
 
 	void NotifyPlayerCountChanged();
+	void EnforceDisableNPCs();
 
 	// Serialize and send a fixed-size message via the transport
 	template <typename T>
@@ -116,7 +124,7 @@ private:
 	NetworkTransport* m_transport;
 	PlatformCallbacks* m_callbacks;
 	WorldStateSync m_worldSync;
-	ThirdPersonCamera m_thirdPersonCamera;
+	NameBubbleRenderer* m_localNameBubble;
 	std::map<uint32_t, std::unique_ptr<RemotePlayer>> m_remotePlayers;
 	std::map<LegoROI*, RemotePlayer*> m_roiToPlayer;
 
@@ -125,10 +133,6 @@ private:
 	uint32_t m_sequence;
 	uint32_t m_lastBroadcastTime;
 	uint8_t m_lastValidActorId;
-	uint8_t m_localWalkAnimId;
-	uint8_t m_localIdleAnimId;
-	uint8_t m_localDisplayActorIndex;
-	bool m_displayActorFrozen;
 	bool m_localAllowRemoteCustomize;
 	bool m_inIsleWorld;
 	bool m_registered;
@@ -140,11 +144,14 @@ private:
 	std::atomic<int> m_pendingEmote;
 	std::atomic<bool> m_pendingToggleAllowCustomize;
 
+	bool m_disableAllNPCs;
 	bool m_showNameBubbles;
+	bool m_lastCameraEnabled;
 
 	static const uint32_t BROADCAST_INTERVAL_MS = 66; // ~15Hz
 	static const uint32_t TIMEOUT_MS = 5000;          // 5 second timeout
 	static const int EXIT_ROOM_FULL = 10;
+	static const int EXIT_CONNECTION_LOST = 11;
 };
 
 } // namespace Multiplayer

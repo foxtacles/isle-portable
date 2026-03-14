@@ -1,11 +1,17 @@
 #include "extensions/multiplayer/networkmanager.h"
 
-#include "extensions/multiplayer/charactercloner.h"
-#include "extensions/multiplayer/charactercustomizer.h"
+#include "extensions/common/animdata.h"
+#include "extensions/common/charactercustomizer.h"
+#include "extensions/multiplayer/namebubblerenderer.h"
+#include "extensions/thirdpersoncamera.h"
+#include "extensions/thirdpersoncamera/controller.h"
 #include "legoanimationmanager.h"
+#include "legocharactermanager.h"
+#include "legoextraactor.h"
 #include "legogamestate.h"
 #include "legomain.h"
 #include "legopathactor.h"
+#include "legopathcontroller.h"
 #include "legoworld.h"
 #include "misc.h"
 #include "mxmisc.h"
@@ -16,7 +22,10 @@
 #include <SDL3/SDL_timer.h>
 #include <vector>
 
+using namespace Extensions;
 using namespace Multiplayer;
+using Common::DetectVehicleType;
+using Common::IsMultiPartEmote;
 
 template <typename T>
 void NetworkManager::SendMessage(const T& p_msg)
@@ -33,12 +42,11 @@ void NetworkManager::SendMessage(const T& p_msg)
 }
 
 NetworkManager::NetworkManager()
-	: m_transport(nullptr), m_callbacks(nullptr), m_localPeerId(0), m_hostPeerId(0), m_sequence(0),
-	  m_lastBroadcastTime(0), m_lastValidActorId(0), m_localWalkAnimId(0), m_localIdleAnimId(0),
-	  m_localDisplayActorIndex(DISPLAY_ACTOR_NONE), m_displayActorFrozen(false), m_localAllowRemoteCustomize(true),
+	: m_transport(nullptr), m_callbacks(nullptr), m_localNameBubble(nullptr), m_localPeerId(0), m_hostPeerId(0),
+	  m_sequence(0), m_lastBroadcastTime(0), m_lastValidActorId(0), m_localAllowRemoteCustomize(true),
 	  m_inIsleWorld(false), m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false),
 	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
-	  m_showNameBubbles(true)
+	  m_disableAllNPCs(false), m_showNameBubbles(true), m_lastCameraEnabled(false)
 {
 }
 
@@ -47,19 +55,50 @@ NetworkManager::~NetworkManager()
 	Shutdown();
 }
 
+static ThirdPersonCamera::Controller* GetCamera()
+{
+	return ThirdPersonCameraExt::GetCamera();
+}
+
 MxResult NetworkManager::Tickle()
 {
-	// Derive display actor early so it is valid before ProcessPendingRequests
-	// may toggle the 3rd-person camera (which needs a valid display actor index).
-	{
-		LegoPathActor* userActor = UserActor();
-		if (userActor) {
-			DeriveDisplayActorIndex(static_cast<LegoActor*>(userActor)->GetActorId());
-		}
+	ProcessPendingRequests();
+
+	if (m_disableAllNPCs) {
+		EnforceDisableNPCs();
 	}
 
-	ProcessPendingRequests();
-	m_thirdPersonCamera.Tick(0.016f);
+	// Detect camera state changes for platform notification
+	ThirdPersonCamera::Controller* cam = GetCamera();
+	if (cam) {
+		bool cameraEnabled = cam->IsEnabled();
+		if (cameraEnabled != m_lastCameraEnabled) {
+			m_lastCameraEnabled = cameraEnabled;
+			NotifyThirdPersonChanged(cameraEnabled);
+
+			if (m_localNameBubble) {
+				if (!cameraEnabled) {
+					m_localNameBubble->SetVisible(false);
+				}
+				else if (m_showNameBubbles) {
+					m_localNameBubble->SetVisible(true);
+				}
+			}
+		}
+
+		// Create local name bubble when display ROI becomes available
+		if (m_showNameBubbles && !m_localNameBubble && cam->GetDisplayROI()) {
+			char name[8];
+			EncodeUsername(name);
+			m_localNameBubble = new NameBubbleRenderer();
+			m_localNameBubble->Create(name);
+		}
+
+		// Update local name bubble position
+		if (m_localNameBubble && cam->GetDisplayROI()) {
+			m_localNameBubble->Update(cam->GetDisplayROI());
+		}
+	}
 
 	if (!m_transport) {
 		return SUCCESS;
@@ -120,6 +159,9 @@ void NetworkManager::Shutdown()
 		m_worldSync.SetTransport(nullptr);
 	}
 
+	delete m_localNameBubble;
+	m_localNameBubble = nullptr;
+
 	RemoveAllRemotePlayers();
 }
 
@@ -143,9 +185,9 @@ bool NetworkManager::IsConnected() const
 	return m_transport && m_transport->IsConnected();
 }
 
-bool NetworkManager::WasRejected() const
+bool NetworkManager::WasDisconnected() const
 {
-	return m_transport && m_transport->WasRejected();
+	return m_transport && m_transport->WasDisconnected();
 }
 
 void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
@@ -153,8 +195,6 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 	if (!p_world) {
 		return;
 	}
-
-	m_thirdPersonCamera.OnWorldEnabled(p_world);
 
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
 		m_inIsleWorld = true;
@@ -178,6 +218,10 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		}
 
 		NotifyPlayerCountChanged();
+
+		if (m_disableAllNPCs) {
+			EnforceDisableNPCs();
+		}
 	}
 }
 
@@ -187,11 +231,17 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		return;
 	}
 
-	m_thirdPersonCamera.OnWorldDisabled(p_world);
-
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
 		m_inIsleWorld = false;
 		m_worldSync.SetInIsleWorld(false);
+
+		// Destroy local name bubble (ROI is about to be destroyed)
+		if (m_localNameBubble) {
+			m_localNameBubble->Destroy();
+			delete m_localNameBubble;
+			m_localNameBubble = nullptr;
+		}
+
 		for (auto& [peerId, player] : m_remotePlayers) {
 			player->SetVisible(false);
 			player->SetNameBubbleVisible(false);
@@ -237,34 +287,72 @@ MxBool NetworkManager::HandleSkyLightMutation(uint8_t p_entityType, uint8_t p_ch
 	return m_worldSync.HandleSkyLightMutation(p_entityType, p_changeType);
 }
 
+void NetworkManager::EnforceDisableNPCs()
+{
+	LegoAnimationManager* am = AnimationManager();
+	if (!am) {
+		return;
+	}
+
+	am->m_numAllowedExtras = 0;
+	am->m_enableCamAnims = FALSE;
+	am->m_unk0x400 = FALSE;
+
+	// Purge all extras including ambient NPCs (mama, papa, brickster)
+	// that are spawned by camera path triggers via FUN_10064380.
+	// PurgeExtra(TRUE) deliberately skips mama/papa, so we purge manually.
+	for (MxS32 i = 0; i < (MxS32) sizeOfArray(am->m_extras); i++) {
+		if (am->m_extras[i].m_roi != NULL) {
+			LegoPathActor* actor = CharacterManager()->GetExtraActor(am->m_extras[i].m_roi->GetName());
+			if (actor != NULL && actor->GetController() != NULL) {
+				actor->GetController()->RemoveActor(actor);
+				actor->SetController(NULL);
+			}
+
+			CharacterManager()->ReleaseActor(am->m_extras[i].m_roi);
+			am->m_extras[i].m_roi = NULL;
+			am->m_extras[i].m_characterId = -1;
+			am->m_unk0x414--;
+		}
+	}
+}
+
 void NetworkManager::ProcessPendingRequests()
 {
-	if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
-		if (m_thirdPersonCamera.IsEnabled()) {
-			m_thirdPersonCamera.Disable();
+	ThirdPersonCamera::Controller* cam = GetCamera();
+
+	// Camera-dependent requests: only consume when cam is available so
+	// the request survives until the camera exists.
+	if (cam) {
+		if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
+			if (cam->IsEnabled()) {
+				cam->Disable();
+			}
+			else {
+				cam->Enable();
+			}
+			NotifyThirdPersonChanged(cam->IsEnabled());
 		}
-		else {
-			m_thirdPersonCamera.Enable();
+
+		int walkAnim = m_pendingWalkAnim.exchange(-1, std::memory_order_relaxed);
+		if (walkAnim >= 0) {
+			SetWalkAnimation(static_cast<uint8_t>(walkAnim));
 		}
-	}
 
-	int walkAnim = m_pendingWalkAnim.exchange(-1, std::memory_order_relaxed);
-	if (walkAnim >= 0) {
-		SetWalkAnimation(static_cast<uint8_t>(walkAnim));
-	}
+		int idleAnim = m_pendingIdleAnim.exchange(-1, std::memory_order_relaxed);
+		if (idleAnim >= 0) {
+			SetIdleAnimation(static_cast<uint8_t>(idleAnim));
+		}
 
-	int idleAnim = m_pendingIdleAnim.exchange(-1, std::memory_order_relaxed);
-	if (idleAnim >= 0) {
-		SetIdleAnimation(static_cast<uint8_t>(idleAnim));
-	}
-
-	int emote = m_pendingEmote.exchange(-1, std::memory_order_relaxed);
-	if (emote >= 0) {
-		SendEmote(static_cast<uint8_t>(emote));
+		int emote = m_pendingEmote.exchange(-1, std::memory_order_relaxed);
+		if (emote >= 0) {
+			SendEmote(static_cast<uint8_t>(emote));
+		}
 	}
 
 	if (m_pendingToggleAllowCustomize.exchange(false, std::memory_order_relaxed)) {
 		m_localAllowRemoteCustomize = !m_localAllowRemoteCustomize;
+		NotifyAllowCustomizeChanged(m_localAllowRemoteCustomize);
 	}
 
 	if (m_pendingToggleNameBubbles.exchange(false, std::memory_order_relaxed)) {
@@ -272,7 +360,10 @@ void NetworkManager::ProcessPendingRequests()
 		for (auto& [peerId, player] : m_remotePlayers) {
 			player->SetNameBubbleVisible(m_showNameBubbles);
 		}
-		m_thirdPersonCamera.SetNameBubbleVisible(m_showNameBubbles);
+		if (m_localNameBubble) {
+			m_localNameBubble->SetVisible(m_showNameBubbles);
+		}
+		NotifyNameBubblesChanged(m_showNameBubbles);
 	}
 }
 
@@ -311,6 +402,8 @@ void NetworkManager::BroadcastLocalState()
 		return;
 	}
 
+	ThirdPersonCamera::Controller* cam = GetCamera();
+
 	PlayerStateMsg msg{};
 	msg.header = {MSG_STATE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
 	msg.actorId = actorId;
@@ -318,28 +411,31 @@ void NetworkManager::BroadcastLocalState()
 	msg.vehicleType = DetectVehicleType(userActor);
 	SDL_memcpy(msg.position, pos, sizeof(msg.position));
 	SDL_memcpy(msg.direction, dir, sizeof(msg.direction));
-
-	// When 3rd-person camera is active, ShouldInvertMovement causes movement
-	// inversion, and CalculateTransform re-inverts to keep ROI z backward.
-	// Negate to send the visual-forward direction that remote players expect.
-	// RemotePlayer::UpdateTransform negates again to restore backward-z.
-	if (m_thirdPersonCamera.IsActive()) {
-		msg.direction[0] = -msg.direction[0];
-		msg.direction[1] = -msg.direction[1];
-		msg.direction[2] = -msg.direction[2];
-	}
-
 	SDL_memcpy(msg.up, up, sizeof(msg.up));
 	msg.speed = speed;
-	msg.walkAnimId = m_localWalkAnimId;
-	msg.idleAnimId = m_localIdleAnimId;
 
 	EncodeUsername(msg.name);
 
-	msg.displayActorIndex = m_localDisplayActorIndex;
+	if (cam) {
+		msg.walkAnimId = cam->GetWalkAnimId();
+		msg.idleAnimId = cam->GetIdleAnimId();
+		msg.displayActorIndex = cam->GetDisplayActorIndex();
+		cam->GetCustomizeState().Pack(msg.customizeData);
 
-	m_thirdPersonCamera.GetCustomizeState().Pack(msg.customizeData);
-	msg.customizeFlags = m_localAllowRemoteCustomize ? 0x01 : 0x00;
+		// Encode multi-part emote frozen state (0x02 = frozen, emote ID in bits 2-4, max 8 emotes)
+		int8_t frozenId = cam->GetFrozenEmoteId();
+		if (frozenId >= 0) {
+			msg.customizeFlags |= 0x02;
+			msg.customizeFlags |= (frozenId & 0x07) << 2;
+		}
+
+		// Zero speed when in any phase of a multi-part emote
+		if (cam->IsInMultiPartEmote()) {
+			msg.speed = 0.0f;
+		}
+	}
+
+	msg.customizeFlags |= m_localAllowRemoteCustomize ? 0x01 : 0x00;
 
 	SendMessage(msg);
 }
@@ -363,10 +459,16 @@ void NetworkManager::ProcessIncomingPackets()
 			}
 			if (length >= 6) {
 				uint8_t maxActors = data[5];
-				if (maxActors >= 5 && maxActors <= 40) {
+				if (maxActors <= 40) {
 					LegoAnimationManager::configureLegoAnimationManager(maxActors);
 					if (AnimationManager()) {
-						AnimationManager()->SetMaxAllowedExtras(maxActors);
+						AnimationManager()->m_maxAllowedExtras = maxActors;
+						AnimationManager()->m_numAllowedExtras =
+							SDL_min(AnimationManager()->m_numAllowedExtras, (MxU32) maxActors);
+					}
+					m_disableAllNPCs = (maxActors == 0);
+					if (m_disableAllNPCs) {
+						EnforceDisableNPCs();
 					}
 				}
 			}
@@ -531,51 +633,43 @@ void NetworkManager::HandleHostAssign(const HostAssignMsg& p_msg)
 
 void NetworkManager::SetWalkAnimation(uint8_t p_walkAnimId)
 {
-	if (p_walkAnimId < g_walkAnimCount) {
-		m_localWalkAnimId = p_walkAnimId;
-		m_thirdPersonCamera.SetWalkAnimId(p_walkAnimId);
+	ThirdPersonCamera::Controller* cam = GetCamera();
+	if (cam && p_walkAnimId < Common::g_walkAnimCount) {
+		cam->SetWalkAnimId(p_walkAnimId);
 	}
 }
 
 void NetworkManager::SetIdleAnimation(uint8_t p_idleAnimId)
 {
-	if (p_idleAnimId < g_idleAnimCount) {
-		m_localIdleAnimId = p_idleAnimId;
-		m_thirdPersonCamera.SetIdleAnimId(p_idleAnimId);
+	ThirdPersonCamera::Controller* cam = GetCamera();
+	if (cam && p_idleAnimId < Common::g_idleAnimCount) {
+		cam->SetIdleAnimId(p_idleAnimId);
 	}
 }
 
 void NetworkManager::SendEmote(uint8_t p_emoteId)
 {
-	if (p_emoteId >= g_emoteAnimCount) {
+	if (p_emoteId >= Common::g_emoteAnimCount) {
 		return;
 	}
 
-	m_thirdPersonCamera.TriggerEmote(p_emoteId);
+	ThirdPersonCamera::Controller* cam = GetCamera();
+	if (!cam) {
+		return;
+	}
+
+	// Multi-part emotes require 3rd person camera to be active (they need the display clone).
+	// In 1st person mode, skip them entirely to avoid broadcasting an emote the local player can't play.
+	if (!cam->IsActive() && IsMultiPartEmote(p_emoteId)) {
+		return;
+	}
+
+	cam->TriggerEmote(p_emoteId);
 
 	EmoteMsg msg{};
 	msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
 	msg.emoteId = p_emoteId;
 	SendMessage(msg);
-}
-
-void NetworkManager::SetDisplayActorIndex(uint8_t p_displayActorIndex)
-{
-	m_localDisplayActorIndex = p_displayActorIndex;
-	m_displayActorFrozen = true;
-	m_thirdPersonCamera.SetDisplayActorIndex(p_displayActorIndex);
-}
-
-void NetworkManager::DeriveDisplayActorIndex(uint8_t p_actorId)
-{
-	if (m_displayActorFrozen || !IsValidActorId(p_actorId)) {
-		return;
-	}
-	uint8_t derived = p_actorId - 1;
-	if (derived != m_localDisplayActorIndex) {
-		m_localDisplayActorIndex = derived;
-		m_thirdPersonCamera.SetDisplayActorIndex(derived);
-	}
 }
 
 void NetworkManager::HandleEmote(const EmoteMsg& p_msg)
@@ -643,6 +737,33 @@ void NetworkManager::NotifyPlayerCountChanged()
 	m_callbacks->OnPlayerCountChanged(count);
 }
 
+void NetworkManager::NotifyThirdPersonChanged(bool p_enabled)
+{
+	if (!m_callbacks) {
+		return;
+	}
+
+	m_callbacks->OnThirdPersonChanged(p_enabled);
+}
+
+void NetworkManager::NotifyNameBubblesChanged(bool p_enabled)
+{
+	if (!m_callbacks) {
+		return;
+	}
+
+	m_callbacks->OnNameBubblesChanged(p_enabled);
+}
+
+void NetworkManager::NotifyAllowCustomizeChanged(bool p_enabled)
+{
+	if (!m_callbacks) {
+		return;
+	}
+
+	m_callbacks->OnAllowCustomizeChanged(p_enabled);
+}
+
 RemotePlayer* NetworkManager::FindPlayerByROI(LegoROI* roi) const
 {
 	auto it = m_roiToPlayer.find(roi);
@@ -659,12 +780,6 @@ bool NetworkManager::IsClonedCharacter(const char* p_name) const
 		if (!SDL_strcasecmp(it.second->GetUniqueName(), p_name)) {
 			return true;
 		}
-	}
-
-	// Check local 3rd-person display actor clone
-	if (m_thirdPersonCamera.GetDisplayROI() != nullptr &&
-		!SDL_strcasecmp(m_thirdPersonCamera.GetDisplayROI()->GetName(), p_name)) {
-		return true;
 	}
 
 	return false;
@@ -685,7 +800,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 	uint32_t targetPeerId = p_msg.targetPeerId;
 
 	// Check if the target is a remote player on this client.
-	// Only play effects here — do NOT modify the remote player's customize state.
+	// Only play effects here -- do NOT modify the remote player's customize state.
 	// State changes come exclusively through UpdateFromNetwork (from the target's
 	// authoritative PlayerStateMsg), which prevents flip-flop from stale state messages.
 	// Note: sound/mood feedback uses the old state (before the authoritative update arrives),
@@ -693,14 +808,17 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 	auto it = m_remotePlayers.find(targetPeerId);
 	if (it != m_remotePlayers.end()) {
 		if (it->second->GetROI()) {
-			CharacterCustomizer::PlayClickSound(
+			Common::CharacterCustomizer::PlayClickSound(
 				it->second->GetROI(),
 				it->second->GetCustomizeState(),
 				p_msg.changeType == CHANGE_MOOD
 			);
-			if (!it->second->IsMoving()) {
-				MxU32 clickAnimId =
-					CharacterCustomizer::PlayClickAnimation(it->second->GetROI(), it->second->GetCustomizeState());
+			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote()) {
+				it->second->StopClickAnimation();
+				MxU32 clickAnimId = Common::CharacterCustomizer::PlayClickAnimation(
+					it->second->GetROI(),
+					it->second->GetCustomizeState()
+				);
 				it->second->SetClickAnimObjectId(clickAnimId);
 			}
 		}
@@ -714,29 +832,33 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 			return;
 		}
 
+		ThirdPersonCamera::Controller* cam = GetCamera();
+		if (!cam) {
+			return;
+		}
+
 		// ApplyCustomizeChange handles null display ROI (advances state without visual)
-		m_thirdPersonCamera.ApplyCustomizeChange(p_msg.changeType, p_msg.partIndex);
+		cam->ApplyCustomizeChange(p_msg.changeType, p_msg.partIndex);
 
 		// Use display ROI for effects in 3rd person, native ROI in 1st person
-		LegoROI* effectROI = m_thirdPersonCamera.GetDisplayROI();
+		LegoROI* effectROI = cam->GetDisplayROI();
 		if (!effectROI && UserActor()) {
 			effectROI = UserActor()->GetROI();
 		}
 
 		if (effectROI) {
-			CharacterCustomizer::PlayClickSound(
+			Common::CharacterCustomizer::PlayClickSound(
 				effectROI,
-				m_thirdPersonCamera.GetCustomizeState(),
+				cam->GetCustomizeState(),
 				p_msg.changeType == CHANGE_MOOD
 			);
 
-			// Only play click animation in 3rd person (not visible in 1st person)
-			if (m_thirdPersonCamera.GetDisplayROI() && !m_thirdPersonCamera.IsInVehicle()) {
-				MxU32 clickAnimId = CharacterCustomizer::PlayClickAnimation(
-					m_thirdPersonCamera.GetDisplayROI(),
-					m_thirdPersonCamera.GetCustomizeState()
-				);
-				m_thirdPersonCamera.SetClickAnimObjectId(clickAnimId);
+			// Only play click animation in 3rd person (not visible in 1st person or multi-part emote)
+			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote()) {
+				cam->StopClickAnimation();
+				MxU32 clickAnimId =
+					Common::CharacterCustomizer::PlayClickAnimation(cam->GetDisplayROI(), cam->GetCustomizeState());
+				cam->SetClickAnimObjectId(clickAnimId);
 			}
 		}
 	}

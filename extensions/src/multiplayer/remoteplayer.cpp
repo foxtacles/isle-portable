@@ -1,8 +1,9 @@
 #include "extensions/multiplayer/remoteplayer.h"
 
 #include "3dmanager/lego3dmanager.h"
-#include "extensions/multiplayer/charactercloner.h"
-#include "extensions/multiplayer/charactercustomizer.h"
+#include "extensions/common/charactercloner.h"
+#include "extensions/common/charactercustomizer.h"
+#include "extensions/multiplayer/namebubblerenderer.h"
 #include "legocharactermanager.h"
 #include "legovideomanager.h"
 #include "legoworld.h"
@@ -11,19 +12,24 @@
 #include "realtime/realtime.h"
 #include "roi/legoroi.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <vec.h>
 
+using namespace Extensions;
 using namespace Multiplayer;
+using Common::DetectVehicleType;
+using Common::g_idleAnimCount;
+using Common::g_vehicleROINames;
+using Common::g_walkAnimCount;
+using Common::IsLargeVehicle;
 
 RemotePlayer::RemotePlayer(uint32_t p_peerId, uint8_t p_actorId, uint8_t p_displayActorIndex)
 	: m_peerId(p_peerId), m_actorId(p_actorId), m_displayActorIndex(p_displayActorIndex), m_roi(nullptr),
 	  m_spawned(false), m_visible(false), m_targetSpeed(0.0f), m_targetVehicleType(VEHICLE_NONE), m_targetWorldId(-1),
 	  m_lastUpdateTime(SDL_GetTicks()), m_hasReceivedUpdate(false),
-	  m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/false}), m_vehicleROI(nullptr),
-	  m_allowRemoteCustomize(true)
+	  m_animator(Common::CharacterAnimatorConfig{/*.saveEmoteTransform=*/false, /*.propSuffix=*/p_peerId}),
+	  m_vehicleROI(nullptr), m_nameBubble(nullptr), m_allowRemoteCustomize(true)
 {
 	m_displayName[0] = '\0';
 	const char* displayName = GetDisplayActorName();
@@ -63,7 +69,7 @@ void RemotePlayer::Spawn(LegoWorld* p_isleWorld)
 		return;
 	}
 
-	m_roi = CharacterCloner::Clone(charMgr, m_uniqueName, actorName);
+	m_roi = Common::CharacterCloner::Clone(charMgr, m_uniqueName, actorName);
 	if (!m_roi) {
 		return;
 	}
@@ -76,7 +82,7 @@ void RemotePlayer::Spawn(LegoWorld* p_isleWorld)
 	m_visible = false;
 
 	// Initialize customize state from the display actor's info
-	uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex);
+	uint8_t actorInfoIndex = Common::CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex);
 	m_customizeState.InitFromActorInfo(actorInfoIndex);
 
 	// Build initial walk and idle animation caches
@@ -141,13 +147,6 @@ void RemotePlayer::UpdateFromNetwork(const PlayerStateMsg& p_msg)
 	SDL_memcpy(newName, p_msg.name, sizeof(newName));
 	newName[sizeof(newName) - 1] = '\0';
 	if (SDL_strcmp(m_displayName, newName) != 0) {
-		SDL_Log(
-			"RemotePlayer[%u] name changed: '%s' -> '%s' (spawned=%d)",
-			m_peerId,
-			m_displayName,
-			newName,
-			m_spawned
-		);
 		SDL_memcpy(m_displayName, newName, sizeof(m_displayName));
 
 		// Recreate bubble with new name (or create for the first time)
@@ -158,19 +157,26 @@ void RemotePlayer::UpdateFromNetwork(const PlayerStateMsg& p_msg)
 	}
 
 	// Update customize state from packed data
-	CustomizeState newState;
+	Common::CustomizeState newState;
 	newState.Unpack(p_msg.customizeData);
 
 	if (newState != m_customizeState) {
-		uint8_t actorInfoIndex = CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex);
+		uint8_t actorInfoIndex = Common::CharacterCustomizer::ResolveActorInfoIndex(m_displayActorIndex);
 		m_customizeState = newState;
 		if (m_spawned && m_roi) {
-			CharacterCustomizer::ApplyFullState(m_roi, actorInfoIndex, m_customizeState);
+			Common::CharacterCustomizer::ApplyFullState(m_roi, actorInfoIndex, m_customizeState);
 		}
 	}
 
 	// Update allow remote customize flag
 	m_allowRemoteCustomize = (p_msg.customizeFlags & 0x01) != 0;
+
+	// Sync multi-part emote frozen state from remote
+	bool isFrozen = (p_msg.customizeFlags & 0x02) != 0;
+	int8_t frozenEmoteId = isFrozen ? (int8_t) ((p_msg.customizeFlags >> 2) & 0x07) : -1;
+	if (frozenEmoteId != m_animator.GetFrozenEmoteId()) {
+		m_animator.SetFrozenEmoteId(frozenEmoteId, m_roi);
+	}
 
 	// Swap walk animation if changed
 	if (p_msg.walkAnimId != m_animator.GetWalkAnimId() && p_msg.walkAnimId < g_walkAnimCount) {
@@ -191,10 +197,17 @@ void RemotePlayer::Tick(float p_deltaTime)
 
 	UpdateVehicleState();
 	UpdateTransform(p_deltaTime);
-	m_animator.Tick(p_deltaTime, m_roi, m_targetSpeed > 0.01f);
+
+	bool isMoving = m_targetSpeed > 0.01f;
+	if (m_animator.GetFrozenEmoteId() >= 0) {
+		isMoving = false;
+	}
+	m_animator.Tick(p_deltaTime, m_roi, isMoving);
 
 	// Update name bubble position and billboard orientation
-	m_animator.UpdateNameBubble(m_roi);
+	if (m_nameBubble) {
+		m_nameBubble->Update(m_roi);
+	}
 }
 
 void RemotePlayer::ReAddToScene()
@@ -249,7 +262,11 @@ void RemotePlayer::TriggerEmote(uint8_t p_emoteId)
 		return;
 	}
 
-	m_animator.TriggerEmote(p_emoteId, m_roi, m_targetSpeed > 0.01f);
+	bool isMoving = m_targetSpeed > 0.01f;
+	if (m_animator.GetFrozenEmoteId() >= 0) {
+		isMoving = false;
+	}
+	m_animator.TriggerEmote(p_emoteId, m_roi, isMoving);
 }
 
 void RemotePlayer::UpdateTransform(float p_deltaTime)
@@ -258,10 +275,8 @@ void RemotePlayer::UpdateTransform(float p_deltaTime)
 	LERP3(m_currentDirection, m_currentDirection, m_targetDirection, 0.2f);
 	LERP3(m_currentUp, m_currentUp, m_targetUp, 0.2f);
 
-	// Negate the received direction to restore the backward-z ROI convention.
-	// BroadcastLocalState sends visual-forward; negating here gives ROI z =
-	// backward, so mesh faces -z = forward (matching the sender's visual).
-	// See also: BroadcastLocalState in networkmanager.cpp.
+	// The network sends forward-z (visual forward).  Character meshes face -z,
+	// so negate to get backward-z for the ROI (mesh faces the correct way).
 	Mx3DPointFloat pos(m_currentPosition[0], m_currentPosition[1], m_currentPosition[2]);
 	Mx3DPointFloat dir(-m_currentDirection[0], -m_currentDirection[1], -m_currentDirection[2]);
 	Mx3DPointFloat up(m_currentUp[0], m_currentUp[1], m_currentUp[2]);
@@ -340,17 +355,26 @@ void RemotePlayer::ExitVehicle()
 
 void RemotePlayer::CreateNameBubble()
 {
-	m_animator.CreateNameBubble(m_displayName);
+	if (!m_nameBubble) {
+		m_nameBubble = new NameBubbleRenderer();
+	}
+	m_nameBubble->Create(m_displayName);
 }
 
 void RemotePlayer::DestroyNameBubble()
 {
-	m_animator.DestroyNameBubble();
+	if (m_nameBubble) {
+		m_nameBubble->Destroy();
+		delete m_nameBubble;
+		m_nameBubble = nullptr;
+	}
 }
 
 void RemotePlayer::SetNameBubbleVisible(bool p_visible)
 {
-	m_animator.SetNameBubbleVisible(p_visible);
+	if (m_nameBubble) {
+		m_nameBubble->SetVisible(p_visible);
+	}
 }
 
 void RemotePlayer::StopClickAnimation()

@@ -38,6 +38,7 @@
 
 #include <array>
 #include <extensions/multiplayer.h>
+#include <extensions/thirdpersoncamera.h>
 #include <miniwin/miniwindevice.h>
 #include <type_traits>
 #include <vec.h>
@@ -90,8 +91,6 @@
 #include <psp2/appmgr.h>
 #include <psp2/kernel/clib.h>
 #endif
-
-using namespace Extensions;
 
 DECOMP_SIZE_ASSERT(IsleApp, 0x8c)
 
@@ -877,6 +876,10 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
 		}
 	}
 
+#ifdef EXTENSIONS
+	Extensions::ThirdPersonCameraExt::HandleSDLEvent(event);
+#endif
+
 	return SDL_APP_CONTINUE;
 }
 
@@ -1297,7 +1300,7 @@ inline bool IsleApp::Tick()
 	}
 
 #ifdef EXTENSIONS
-	if (Extensions::IsMultiplayerRejected()) {
+	if (Extensions::IsMultiplayerDisconnected()) {
 		g_closed = TRUE;
 		return true;
 	}
