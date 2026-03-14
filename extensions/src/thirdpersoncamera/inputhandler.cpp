@@ -116,19 +116,19 @@ void InputHandler::HandleSDLEvent(SDL_Event* p_event, OrbitCamera& p_orbit, bool
 	case SDL_EVENT_MOUSE_BUTTON_UP: {
 		if (p_event->button.button == SDL_BUTTON_RIGHT) {
 			m_rightButtonHeld = p_event->button.down;
-		}
-		if (!p_active) {
-			break;
-		}
-		SDL_Window* window = SDL_GetWindowFromID(p_event->button.windowID);
-		if (window) {
-			if (m_rightButtonHeld) {
-				SDL_GetMouseState(&m_savedMouseX, &m_savedMouseY);
-				SDL_SetWindowRelativeMouseMode(window, true);
+			if (!p_active) {
+				break;
 			}
-			else {
-				SDL_SetWindowRelativeMouseMode(window, false);
-				SDL_WarpMouseInWindow(window, m_savedMouseX, m_savedMouseY);
+			SDL_Window* window = SDL_GetWindowFromID(p_event->button.windowID);
+			if (window) {
+				if (m_rightButtonHeld) {
+					SDL_GetMouseState(&m_savedMouseX, &m_savedMouseY);
+					SDL_SetWindowRelativeMouseMode(window, true);
+				}
+				else {
+					SDL_SetWindowRelativeMouseMode(window, false);
+					SDL_WarpMouseInWindow(window, m_savedMouseX, m_savedMouseY);
+				}
 			}
 		}
 		break;
