@@ -18,7 +18,6 @@
 #include "mxticklemanager.h"
 #include "roi/legoroi.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <vector>
@@ -457,7 +456,6 @@ void NetworkManager::ProcessIncomingPackets()
 				SDL_memcpy(&assignedId, data + 1, sizeof(uint32_t));
 				m_localPeerId = assignedId;
 				m_worldSync.SetLocalPeerId(assignedId);
-				SDL_Log("[Multiplayer] Assigned peer ID: %u", assignedId);
 			}
 			if (length >= 6) {
 				uint8_t maxActors = data[5];

@@ -7,8 +7,8 @@
 namespace Multiplayer
 {
 
-static const int EXIT_ROOM_FULL = 10;
-static const int EXIT_CONNECTION_LOST = 11;
+inline constexpr int EXIT_ROOM_FULL = 10;
+inline constexpr int EXIT_CONNECTION_LOST = 11;
 
 class NetworkTransport {
 public:

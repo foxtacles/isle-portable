@@ -18,9 +18,12 @@ static int LwsCallback(struct lws* p_wsi, enum lws_callback_reasons p_reason, vo
 	return 0;
 }
 
+static constexpr size_t LWS_RX_BUFFER_SIZE = 8192;
+static constexpr int LWS_SERVICE_TIMEOUT_MS = 50;
+
 // clang-format off
 static const struct lws_protocols s_protocols[] = {
-	{"lws-multiplayer", LwsCallback, 0, 8192},
+	{"lws-multiplayer", LwsCallback, 0, LWS_RX_BUFFER_SIZE},
 	LWS_PROTOCOL_LIST_TERM
 };
 // clang-format on
@@ -82,14 +85,12 @@ void LwsTransport::Connect(const char* p_roomId)
 		ctxInfo.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	}
 
-	SDL_Log("[Multiplayer] Creating lws context...");
 	m_context = lws_create_context(&ctxInfo);
 	if (!m_context) {
 		SDL_Log("[Multiplayer] Failed to create lws context");
 		m_disconnected.store(true);
 		return;
 	}
-	SDL_Log("[Multiplayer] lws context created successfully");
 
 	// path from lws_parse_uri does not include the leading '/', so prepend it
 	std::string fullPath = std::string("/") + path;
@@ -106,7 +107,6 @@ void LwsTransport::Connect(const char* p_roomId)
 	connInfo.local_protocol_name = s_protocols[0].name;
 	connInfo.opaque_user_data = this;
 
-	SDL_Log("[Multiplayer] Initiating client connection...");
 	struct lws* wsi = lws_client_connect_via_info(&connInfo);
 	if (!wsi) {
 		SDL_Log("[Multiplayer] Failed to initiate WebSocket connection to %s:%d%s", address, port, fullPath.c_str());
@@ -119,7 +119,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	m_wsi.store(wsi);
 	m_serviceThread = new LwsServiceThread();
 	m_serviceThread->SetTransport(this);
-	if (m_serviceThread->Start(0x1000, 0) != SUCCESS) {
+	if (m_serviceThread->Start(0, 0) != SUCCESS) {
 		SDL_Log("[Multiplayer] Failed to start WebSocket service thread");
 		delete m_serviceThread;
 		m_serviceThread = nullptr;
@@ -187,7 +187,9 @@ void LwsTransport::Send(const uint8_t* p_data, size_t p_length)
 	m_sendCS.Leave();
 
 	m_wantWritable.store(true);
-	lws_cancel_service(m_context);
+	if (m_context) {
+		lws_cancel_service(m_context);
+	}
 }
 
 size_t LwsTransport::Receive(std::function<void(const uint8_t*, size_t)> p_callback)
@@ -218,7 +220,7 @@ void LwsTransport::ServiceLoop()
 		}
 	}
 
-	lws_service(m_context, 50);
+	lws_service(m_context, LWS_SERVICE_TIMEOUT_MS);
 }
 
 int LwsTransport::HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, size_t p_len)
