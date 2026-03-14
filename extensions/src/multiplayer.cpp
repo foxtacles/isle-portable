@@ -25,7 +25,7 @@
 #include "extensions/multiplayer/platforms/emscripten/websockettransport.h"
 
 #include <emscripten.h>
-#elif defined(ISLE_HAS_LWS)
+#elif defined(ISLE_USE_LWS)
 #include "extensions/multiplayer/platforms/native/lwstransport.h"
 #include "extensions/multiplayer/platforms/native/nativecallbacks.h"
 #endif
@@ -54,12 +54,12 @@ void MultiplayerExt::Initialize()
 #ifdef __EMSCRIPTEN__
 	s_transport = new Multiplayer::WebSocketTransport(s_relayUrl);
 	s_callbacks = new Multiplayer::EmscriptenCallbacks();
-#elif defined(ISLE_HAS_LWS)
+#elif defined(ISLE_USE_LWS)
 	s_transport = new Multiplayer::LwsTransport(s_relayUrl);
 	s_callbacks = new Multiplayer::NativeCallbacks();
 #endif
 
-#if defined(__EMSCRIPTEN__) || defined(ISLE_HAS_LWS)
+#if defined(__EMSCRIPTEN__) || defined(ISLE_USE_LWS)
 	s_networkManager = new Multiplayer::NetworkManager();
 	s_networkManager->Initialize(s_transport, s_callbacks);
 

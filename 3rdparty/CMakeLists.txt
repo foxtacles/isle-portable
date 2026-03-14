@@ -72,7 +72,7 @@ if(DOWNLOAD_DEPENDENCIES)
     set_property(TARGET libweaver PROPERTY CXX_STANDARD_REQUIRED ON)
 endif()
 
-if(ISLE_HAS_LWS)
+if(ISLE_USE_LWS)
     if(DOWNLOAD_DEPENDENCIES)
         include(FetchContent)
 
