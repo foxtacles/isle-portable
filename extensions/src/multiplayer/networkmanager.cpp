@@ -18,6 +18,7 @@
 #include "mxticklemanager.h"
 #include "roi/legoroi.h"
 
+#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <vector>
