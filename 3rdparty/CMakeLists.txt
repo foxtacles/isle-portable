@@ -111,6 +111,10 @@ if(ISLE_USE_WEBSOCKETS)
             set(LWS_WITH_SSL ON CACHE BOOL "" FORCE)
             set(LWS_WITH_MBEDTLS ON CACHE BOOL "" FORCE)
             set(LWS_WITH_EXPORT_LWSTARGETS OFF CACHE BOOL "" FORCE)
+            # mbedTLS isn't built yet at configure time, so lws's check_function_exists
+            # calls fail. Pre-set the results for APIs that exist in mbedTLS 3.x.
+            set(LWS_HAVE_mbedtls_md_setup 1 CACHE INTERNAL "" FORCE)
+            set(LWS_HAVE_mbedtls_rsa_complete 1 CACHE INTERNAL "" FORCE)
             set(LWS_WITH_SHARED OFF CACHE BOOL "" FORCE)
             set(LWS_WITH_STATIC ON CACHE BOOL "" FORCE)
             set(LWS_WITHOUT_TESTAPPS ON CACHE BOOL "" FORCE)
