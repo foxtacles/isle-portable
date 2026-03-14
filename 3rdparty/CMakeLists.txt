@@ -76,14 +76,13 @@ if(ISLE_USE_WEBSOCKETS)
     if(DOWNLOAD_DEPENDENCIES)
         include(FetchContent)
 
-        # Suppress CMake deprecation error for mbedTLS's old cmake_minimum_required
-        set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-
         # Fetch mbedTLS for TLS/WSS support in libwebsockets
         FetchContent_Declare(
             mbedtls
             URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.5/mbedtls-3.6.5.tar.bz2
             URL_MD5 bc79602daf85f1cf35a686b53056de58
+            # Patch cmake_minimum_required to avoid deprecation error with -Werror=dev
+            PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/patch_mbedtls_cmake.cmake
         )
         block()
             set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
