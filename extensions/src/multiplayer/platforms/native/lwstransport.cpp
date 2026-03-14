@@ -26,7 +26,8 @@ static const struct lws_protocols s_protocols[] = {
 // clang-format on
 
 LwsTransport::LwsTransport(const std::string& p_relayBaseUrl)
-	: m_relayBaseUrl(p_relayBaseUrl), m_context(nullptr), m_wsi(nullptr), m_connected(false), m_rejected(false)
+	: m_relayBaseUrl(p_relayBaseUrl), m_context(nullptr), m_wsi(nullptr), m_connected(false), m_disconnected(false),
+	  m_wasEverConnected(false)
 {
 }
 
@@ -41,7 +42,8 @@ void LwsTransport::Connect(const char* p_roomId)
 		Disconnect();
 	}
 
-	m_rejected = false;
+	m_disconnected = false;
+	m_wasEverConnected = false;
 
 	// lws_parse_uri modifies the string in place, so we need a mutable copy
 	std::string fullUrl = m_relayBaseUrl + "/room/" + p_roomId;
@@ -55,7 +57,7 @@ void LwsTransport::Connect(const char* p_roomId)
 
 	if (lws_parse_uri(&urlBuf[0], &protocol, &address, &port, &path)) {
 		SDL_Log("[Multiplayer] Failed to parse relay URL: %s", fullUrl.c_str());
-		m_rejected = true;
+		m_disconnected = true;
 		return;
 	}
 
@@ -67,7 +69,7 @@ void LwsTransport::Connect(const char* p_roomId)
 	m_context = lws_create_context(&ctxInfo);
 	if (!m_context) {
 		SDL_Log("[Multiplayer] Failed to create lws context");
-		m_rejected = true;
+		m_disconnected = true;
 		return;
 	}
 
@@ -92,7 +94,7 @@ void LwsTransport::Connect(const char* p_roomId)
 		SDL_Log("[Multiplayer] Failed to initiate WebSocket connection to %s:%d%s", address, port, fullPath.c_str());
 		lws_context_destroy(m_context);
 		m_context = nullptr;
-		m_rejected = true;
+		m_disconnected = true;
 		return;
 	}
 }
@@ -115,9 +117,14 @@ bool LwsTransport::IsConnected() const
 	return m_connected;
 }
 
+bool LwsTransport::WasDisconnected() const
+{
+	return m_disconnected;
+}
+
 bool LwsTransport::WasRejected() const
 {
-	return m_rejected;
+	return m_disconnected && !m_wasEverConnected;
 }
 
 void LwsTransport::Send(const uint8_t* p_data, size_t p_length)
@@ -158,6 +165,7 @@ int LwsTransport::HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, si
 	switch (p_reason) {
 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
 		m_connected = true;
+		m_wasEverConnected = true;
 		break;
 
 	case LWS_CALLBACK_CLIENT_RECEIVE:
@@ -182,17 +190,8 @@ int LwsTransport::HandleLwsEvent(struct lws* p_wsi, int p_reason, void* p_in, si
 		break;
 
 	case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
-		if (!m_connected) {
-			m_rejected = true;
-		}
-		m_connected = false;
-		m_wsi = nullptr;
-		break;
-
 	case LWS_CALLBACK_CLIENT_CLOSED:
-		if (!m_connected) {
-			m_rejected = true;
-		}
+		m_disconnected = true;
 		m_connected = false;
 		m_wsi = nullptr;
 		break;
