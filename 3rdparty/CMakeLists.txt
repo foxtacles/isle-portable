@@ -88,18 +88,18 @@ if(ISLE_USE_WEBSOCKETS)
             set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
             set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
             FetchContent_MakeAvailable(mbedtls)
-        endblock()
 
-        # Point lws at the mbedTLS targets so it skips its own find logic
-        set(LWS_MBEDTLS_INCLUDE_DIRS
-            "${mbedtls_SOURCE_DIR}/include"
-            "${mbedtls_BINARY_DIR}/include"
-            CACHE STRING "" FORCE
-        )
-        set(LWS_MBEDTLS_LIBRARIES
-            "mbedtls;mbedx509;mbedcrypto"
-            CACHE STRING "" FORCE
-        )
+            # Point lws at the mbedTLS targets so it skips its own find logic
+            # Must be inside block() to access mbedtls_SOURCE_DIR/mbedtls_BINARY_DIR
+            set(LWS_MBEDTLS_INCLUDE_DIRS
+                "${mbedtls_SOURCE_DIR}/include;${mbedtls_BINARY_DIR}/include"
+                CACHE STRING "" FORCE
+            )
+            set(LWS_MBEDTLS_LIBRARIES
+                "mbedtls;mbedx509;mbedcrypto"
+                CACHE STRING "" FORCE
+            )
+        endblock()
 
         FetchContent_Declare(
             libwebsockets
