@@ -456,6 +456,7 @@ void NetworkManager::ProcessIncomingPackets()
 				SDL_memcpy(&assignedId, data + 1, sizeof(uint32_t));
 				m_localPeerId = assignedId;
 				m_worldSync.SetLocalPeerId(assignedId);
+				SDL_Log("[Multiplayer] Assigned peer ID: %u", assignedId);
 			}
 			if (length >= 6) {
 				uint8_t maxActors = data[5];
