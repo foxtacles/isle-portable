@@ -1016,21 +1016,34 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 		// At t=0 this gives savedTransform (player stays put).
 		// At t>0 the delta animPose0->animPose(t) is applied in the player's frame.
 		if (!m_rebaseComputed) {
-			std::function<bool(LegoTreeNode*)> findOrigin = [&](LegoTreeNode* node) -> bool {
+			// Find the player character node and compute its WORLD transform
+			// at time 0 by accumulating parent transforms (handles nested
+			// '-' nodes like -SBA001BU -> -TILT -> BU).
+			std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin =
+				[&](LegoTreeNode* node, MxMatrix& parentWorld) -> bool {
 				LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
 				MxU32 roiIdx = data ? data->GetROIIndex() : 0;
+
+				// Compute this node's world transform
+				MxMatrix localMat;
+				LegoROI::CreateLocalTransform(data, 0, localMat);
+				MxMatrix worldMat;
+				worldMat.Product(localMat, parentWorld);
+
 				if (roiIdx != 0 && m_roiMap[roiIdx] == m_executingROI) {
-					LegoROI::CreateLocalTransform(data, 0, m_animPose0);
+					m_animPose0 = worldMat;
 					return true;
 				}
 				for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
-					if (findOrigin(node->GetChild(i))) {
+					if (findOrigin(node->GetChild(i), worldMat)) {
 						return true;
 					}
 				}
 				return false;
 			};
-			findOrigin(m_currentData->anim->GetRoot());
+			MxMatrix identity;
+			identity.SetIdentity();
+			findOrigin(m_currentData->anim->GetRoot(), identity);
 
 			// Compute inverse of animPose0 (rigid body: transpose rotation, negate translated position)
 			MxMatrix invAnimPose0;

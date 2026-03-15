@@ -704,13 +704,13 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 
 	// TEST TRIGGER: When emote 0 (Wave) is triggered, play the first eligible
 	// NPC animation for the current actor instead of the emote.
-	if (p_emoteId == 0 && cam->IsActive() && cam->GetDisplayROI() && !m_npcAnimPlayer.IsPlaying()) {
+	if ((p_emoteId == 0 || p_emoteId == 1) && cam->IsActive() && cam->GetDisplayROI() && !m_npcAnimPlayer.IsPlaying()) {
 		LegoPathActor* userActor = UserActor();
 		if (userActor) {
 			uint8_t actorId = static_cast<LegoActor*>(userActor)->GetActorId();
 			auto eligible = m_npcAnimCatalog.GetEligibleAnimations(actorId);
 			if (!eligible.empty()) {
-				const Common::NpcAnimEntry* entry = eligible[1];
+				const Common::NpcAnimEntry* entry = eligible[p_emoteId];
 				SDL_Log(
 					"NPC Anim Test: Playing '%s' (objectId=%u) for actor %u",
 					entry->name,
