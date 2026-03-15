@@ -929,8 +929,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 			);
 
 			// Only play click animation in 3rd person (not during multi-part emote or animation playback)
-			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote() &&
-				!cam->IsAnimPlaying()) {
+			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote() && !cam->IsAnimPlaying()) {
 				cam->StopClickAnimation();
 				MxU32 clickAnimId =
 					Common::CharacterCustomizer::PlayClickAnimation(cam->GetDisplayROI(), cam->GetCustomizeState());

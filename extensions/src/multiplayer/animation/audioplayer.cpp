@@ -11,13 +11,8 @@ void AudioPlayer::Init(const std::vector<AnimData::AudioTrack>& p_tracks)
 		LegoCacheSound* sound = new LegoCacheSound();
 		MxString mediaSrcPath(audioTrack.mediaSrcPath.c_str());
 		MxWavePresenter::WaveFormat format = audioTrack.format;
-		if (sound->Create(
-				format,
-				mediaSrcPath,
-				audioTrack.volume,
-				audioTrack.pcmData,
-				audioTrack.pcmDataSize
-			) == SUCCESS) {
+		if (sound->Create(format, mediaSrcPath, audioTrack.volume, audioTrack.pcmData, audioTrack.pcmDataSize) ==
+			SUCCESS) {
 			ActiveSound active;
 			active.sound = sound;
 			active.timeOffset = audioTrack.timeOffset;

@@ -10,13 +10,13 @@ namespace Multiplayer::Animation
 {
 
 enum AnimCategory : uint8_t {
-	e_npcAnim,   // characterIndex >= 0 && location == -1
-	e_camAnim,   // characterIndex >= 0 && location >= 0
-	e_otherAnim  // characterIndex < 0 (ambient, non-character)
+	e_npcAnim,  // characterIndex >= 0 && location == -1
+	e_camAnim,  // characterIndex >= 0 && location >= 0
+	e_otherAnim // characterIndex < 0 (ambient, non-character)
 };
 
 struct CatalogEntry {
-	uint16_t animIndex;   // Index into LegoAnimationManager::m_anims[]
+	uint16_t animIndex; // Index into LegoAnimationManager::m_anims[]
 	AnimCategory category;
 };
 
