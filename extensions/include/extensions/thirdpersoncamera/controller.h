@@ -57,6 +57,7 @@ public:
 	void SetClickAnimObjectId(MxU32 p_clickAnimObjectId) { m_animator.SetClickAnimObjectId(p_clickAnimObjectId); }
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_animator.IsInVehicle(); }
+	LegoROI* GetRideVehicleROI() const { return m_animator.GetRideVehicleROI(); }
 
 	void SetNpcAnimPlaying(bool p_playing) { m_npcAnimPlaying = p_playing; }
 	bool IsNpcAnimPlaying() const { return m_npcAnimPlaying; }

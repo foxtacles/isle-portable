@@ -94,8 +94,9 @@ public:
 	// Animation data extraction and caching
 	NpcAnimData* EnsureCached(uint32_t p_objectId);
 
-	// Playback control
-	void Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI);
+	// Playback control. p_vehicleROI is the existing ride vehicle ROI
+	// (if the player is on a small vehicle), or nullptr.
+	void Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, LegoROI* p_vehicleROI = nullptr);
 	void Tick(float p_deltaTime);
 	void Stop();
 
@@ -135,16 +136,20 @@ private:
 	MxMatrix m_animPose0;    // Player character's animation transform at time 0
 	MxMatrix m_rebaseMatrix; // Transform from animation world-space to player's local frame
 
+	// Borrowed vehicle ROI (renamed during playback, restored on Stop)
+	LegoROI* m_vehicleROI;
+	std::string m_savedVehicleName;
+
 	// ROI map for skeletal animation
 	LegoROI** m_roiMap;
 	MxU32 m_roiMapSize;
 
 	// Extra ROIs created for the animation (characters + props).
-	// Characters are created via CharacterCloner::Clone (released with ReleaseActor).
-	// Props are created via CreateAutoROI (released with ReleaseAutoROI).
+	// Characters (CharacterCloner::Clone) are released with ReleaseActor.
+	// Props (CreateAutoROI) are released with ReleaseAutoROI.
+	// Distinguished at cleanup via CharacterManager()->Exists().
 	LegoROI** m_propROIs;
 	uint8_t m_propCount;
-	uint8_t m_charCount; // First m_charCount entries are Clone'd characters
 
 	// Audio playback
 	struct ActiveSound {

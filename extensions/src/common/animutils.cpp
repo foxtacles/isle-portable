@@ -35,32 +35,32 @@ static void AssignROIIndices(
 
 		if (*name == '*' || p_parentROI == nullptr) {
 			roi = p_rootROI;
-			if (!p_rootClaimed) {
-				matchedROI = p_rootROI;
-				p_rootClaimed = true;
-			}
-			else if (p_extraROICount > 0) {
-				const char* searchName = (*name == '*') ? name + 1 : name;
+
+			// Before claiming root, check if this node matches an extra ROI.
+			// This handles cases like BIKESY appearing before SY in the tree:
+			// BIKESY should match the vehicle extra, not claim the root.
+			const char* searchName = (*name == '*') ? name + 1 : name;
+			bool matchedExtra = false;
+			if (p_extraROICount > 0) {
 				for (int e = 0; e < p_extraROICount; e++) {
-					SDL_Log(
-						"AssignROIIndices: searching extra[%d] name='%s' for searchName='%s'",
-						e,
-						p_extraROIs[e]->GetName(),
-						searchName
-					);
 					matchedROI = p_extraROIs[e]->FindChildROI(searchName, p_extraROIs[e]);
 					if (matchedROI != nullptr) {
 						SDL_Log("AssignROIIndices: MATCHED '%s' -> extra[%d] '%s'", searchName, e, matchedROI->GetName());
 						roi = matchedROI;
+						matchedExtra = true;
 						break;
 					}
 				}
-				if (!matchedROI) {
-					SDL_Log("AssignROIIndices: NO MATCH for root-level '%s' in %d extras", searchName, p_extraROICount);
-				}
 			}
-			else {
-				SDL_Log("AssignROIIndices: root claimed, no extras for '%s'", name);
+
+			if (!matchedExtra) {
+				if (!p_rootClaimed) {
+					matchedROI = p_rootROI;
+					p_rootClaimed = true;
+				}
+				else {
+					SDL_Log("AssignROIIndices: root claimed, no extras for '%s'", name);
+				}
 			}
 		}
 		else {

@@ -721,7 +721,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 			);
 			cam->SetNpcAnimPlaying(true);
 			cam->SetNpcAnimStopCallback([this]() { m_npcAnimPlayer.Stop(); });
-			m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI());
+			m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI(), cam->GetRideVehicleROI());
 
 			EmoteMsg msg{};
 			msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};

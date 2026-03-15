@@ -27,25 +27,6 @@
 
 using namespace Extensions::Common;
 
-// Maps animation tree node names to actual LOD names when they differ.
-// Must match the table in characteranimator.cpp.
-static const char* ResolvePropLODName(const char* p_nodeName)
-{
-	static const struct {
-		const char* nodePrefix;
-		const char* lodName;
-	} mappings[] = {
-		{"popmug", "pizpie"},
-	};
-
-	for (const auto& m : mappings) {
-		if (!SDL_strncasecmp(p_nodeName, m.nodePrefix, SDL_strlen(m.nodePrefix))) {
-			return m.lodName;
-		}
-	}
-	return p_nodeName;
-}
-
 // RIFF chunk IDs (matching libweaver sitypes.h)
 static const uint32_t RIFF_ID = 0x46464952;
 static const uint32_t OMNI_ID = 0x494e4d4f;
@@ -144,8 +125,8 @@ NpcAnimPlayer::ObjectTree& NpcAnimPlayer::ObjectTree::operator=(ObjectTree&& p_o
 
 NpcAnimPlayer::NpcAnimPlayer()
 	: m_siFile(nullptr), m_siReady(false), m_bufferSize(0), m_playing(false), m_rebaseComputed(false),
-	  m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0),
-	  m_propROIs(nullptr), m_propCount(0), m_charCount(0)
+	  m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr), m_vehicleROI(nullptr),
+	  m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr), m_propCount(0)
 {
 }
 
@@ -774,7 +755,7 @@ NpcAnimData* NpcAnimPlayer::EnsureCached(uint32_t p_objectId)
 	return &result.first->second;
 }
 
-void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
+void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, LegoROI* p_vehicleROI)
 {
 	if (m_playing) {
 		Stop();
@@ -823,132 +804,137 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 		return;
 	}
 
-	// Create ROIs for extra characters and props in the animation.
-	// The animation tree root has children like: -SBA002BU -> BU, RHODA, RD, BD, PG
-	// BU maps to the player ROI. The others need full character ROIs.
-	// Characters are compound objects (head+body+arms+legs) — CreateAutoROI
-	// won't work for them (it does LOD lookup, not actor lookup). We use
-	// CharacterCloner::Clone which builds the full compound ROI from actor info.
+	// Create ROIs for extra actors and props using the animation's own
+	// actor metadata (LegoAnimActorEntry), matching the original game's
+	// CreateManagedActors/CreateSceneROIs approach. Each entry has a type
+	// that tells us exactly how to create the ROI.
 	std::vector<LegoROI*> createdROIs;
 	{
-		LegoTreeNode* animRoot = data->anim->GetRoot();
-		bool playerClaimed = false;
+		// Determine the player character's 2-letter prefix for matching.
+		// The last 2 chars of the animation name encode the character
+		// (same convention used by GetCharacterIndex).
+		char playerPrefix[3] = {0};
+		size_t nameLen = SDL_strlen(p_entry.name);
+		if (nameLen >= 2) {
+			playerPrefix[0] = p_entry.name[nameLen - 2];
+			playerPrefix[1] = p_entry.name[nameLen - 1];
+		}
 
-		// Walk through the animation tree top-level to find character nodes.
-		// Skip '-' prefixed nodes (camera/tilt) and recurse into them.
-		std::function<void(LegoTreeNode*)> scanForCharacters = [&](LegoTreeNode* node) {
-			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
-				LegoTreeNode* child = node->GetChild(i);
-				LegoAnimNodeData* childData = (LegoAnimNodeData*) child->GetData();
-				const char* name = childData ? childData->GetName() : nullptr;
-				if (!name) {
-					continue;
-				}
+		LegoU32 numActors = data->anim->GetNumActors();
+		SDL_Log("NpcAnimPlayer: Animation has %u actors", numActors);
 
-				if (*name == '-') {
-					// Camera/tilt node — recurse
-					scanForCharacters(child);
-					continue;
-				}
+		for (LegoU32 i = 0; i < numActors; i++) {
+			const char* actorName = data->anim->GetActorName(i);
+			LegoU32 actorType = data->anim->GetActorType(i);
 
-				if (!playerClaimed) {
-					playerClaimed = true; // First character = player
-					continue;
-				}
-
-				// Strip '*' prefix if present for lookup
-				const char* lookupName = (*name == '*') ? name + 1 : name;
-				std::string lowered(lookupName);
-				std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-
-				if (CharacterManager()->GetActorInfo(lowered.c_str())) {
-					// Known actor — use CharacterCloner for full compound ROI
-					char uniqueName[64];
-					SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_char_%s", lowered.c_str());
-
-					LegoROI* charROI = CharacterCloner::Clone(CharacterManager(), uniqueName, lowered.c_str());
-					if (charROI) {
-						charROI->SetName(lowered.c_str());
-						VideoManager()->Get3DManager()->Add(*charROI);
-						createdROIs.push_back(charROI);
-						SDL_Log("NpcAnimPlayer: Created extra character '%s'", lowered.c_str());
-					}
-				}
-				else {
-					// Not an actor — create as prop via CreateAutoROI.
-					// Trim trailing digits/underscores from LOD name
-					// (e.g. LETR12 -> letr), matching the original game's
-					// e_managedInvisibleRoiTrimmed logic.
-					std::string lodName(lowered);
-					while (lodName.size() > 1) {
-						char c = lodName.back();
-						if ((c >= '0' && c <= '9') || c == '_') {
-							lodName.pop_back();
-						}
-						else {
-							break;
-						}
-					}
-
-					char uniqueName[64];
-					SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-					LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
-					if (propROI) {
-						propROI->SetName(lowered.c_str());
-						createdROIs.push_back(propROI);
-						SDL_Log("NpcAnimPlayer: Created prop '%s' (lod='%s')", lowered.c_str(), lodName.c_str());
-					}
-					else {
-						SDL_Log("NpcAnimPlayer: Failed to create prop '%s' (lod='%s')", lowered.c_str(), lodName.c_str());
-					}
-				}
-			}
-		};
-		scanForCharacters(animRoot);
-
-		// Record how many are Clone'd characters (for correct cleanup)
-		m_charCount = (uint8_t) createdROIs.size();
-
-		// Also collect non-character unmatched nodes (props)
-		std::vector<std::string> unmatchedNames;
-		AnimUtils::CollectUnmatchedNodes(data->anim, p_executingROI, unmatchedNames);
-		for (const std::string& name : unmatchedNames) {
-			bool alreadyCreated = false;
-			for (auto* roi : createdROIs) {
-				if (!SDL_strcasecmp(roi->GetName(), name.c_str())) {
-					alreadyCreated = true;
-					break;
-				}
-			}
-			if (alreadyCreated) {
+			if (!actorName || *actorName == '\0') {
 				continue;
 			}
 
-			// Trim trailing digits/underscores from LOD name
-			std::string lodName(name);
-			while (lodName.size() > 1) {
-				char c = lodName.back();
-				if ((c >= '0' && c <= '9') || c == '_') {
-					lodName.pop_back();
-				}
-				else {
-					break;
-				}
-			}
-			const char* resolvedLodName = ResolvePropLODName(lodName.c_str());
-			if (resolvedLodName != lodName.c_str()) {
-				lodName = resolvedLodName;
+			// Strip '*' prefix for lookup
+			const char* lookupName = (*actorName == '*') ? actorName + 1 : actorName;
+			std::string lowered(lookupName);
+			std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
+
+			// Skip the player character — already have p_executingROI
+			if (playerPrefix[0] && !SDL_strncasecmp(lookupName, playerPrefix, 2)) {
+				SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> PLAYER (skip)", i, actorName, actorType);
+				continue;
 			}
 
-			char uniqueName[64];
-			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", name.c_str());
-			LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
-			if (propROI) {
-				propROI->SetName(name.c_str());
-				createdROIs.push_back(propROI);
-				SDL_Log("NpcAnimPlayer: Created prop ROI '%s'", name.c_str());
+			LegoROI* roi = nullptr;
+
+			if (actorType == LegoAnimActorEntry::e_managedLegoActor) {
+				// Character — use CharacterCloner for full compound ROI
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_char_%s", lowered.c_str());
+
+				roi = CharacterCloner::Clone(CharacterManager(), uniqueName, lowered.c_str());
+				if (roi) {
+					roi->SetName(lowered.c_str());
+					VideoManager()->Get3DManager()->Add(*roi);
+					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> CHARACTER '%s'", i, actorName, actorType, lowered.c_str());
+				}
+			}
+			else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed ||
+					 actorType == LegoAnimActorEntry::e_sceneRoi1 ||
+					 actorType == LegoAnimActorEntry::e_sceneRoi2) {
+				// Prop with digit-trimmed LOD name
+				std::string lodName(lowered);
+				while (lodName.size() > 1) {
+					char c = lodName.back();
+					if ((c >= '0' && c <= '9') || c == '_') {
+						lodName.pop_back();
+					}
+					else {
+						break;
+					}
+				}
+
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
+				roi = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
+				if (roi) {
+					roi->SetName(lowered.c_str());
+					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s' (lod='%s')", i, actorName, actorType, lowered.c_str(), lodName.c_str());
+				}
+			}
+			else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoi) {
+				// Prop with exact name
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
+				roi = CharacterManager()->CreateAutoROI(uniqueName, lowered.c_str(), FALSE);
+				if (roi) {
+					roi->SetName(lowered.c_str());
+					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s'", i, actorName, actorType, lowered.c_str());
+				}
+			}
+			else {
+				// Type 0/1: "scene" actors expected to already exist in the world.
+				// Try to create as prop first. If that fails and we have a vehicle
+				// ROI, reuse it (the actor is likely the player's vehicle).
+				std::string lodName(lowered);
+				while (lodName.size() > 1) {
+					char c = lodName.back();
+					if ((c >= '0' && c <= '9') || c == '_') {
+						lodName.pop_back();
+					}
+					else {
+						break;
+					}
+				}
+
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
+				roi = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
+				if (roi) {
+					roi->SetName(lowered.c_str());
+					SDL_Log(
+						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> SCENE PROP '%s' (lod='%s')",
+						i, actorName, actorType, lowered.c_str(), lodName.c_str()
+					);
+				}
+				else if (p_vehicleROI && !m_vehicleROI) {
+					// Prop creation failed — reuse the existing ride vehicle ROI
+					m_vehicleROI = p_vehicleROI;
+					m_savedVehicleName = p_vehicleROI->GetName();
+					p_vehicleROI->SetName(lowered.c_str());
+					roi = p_vehicleROI;
+					SDL_Log(
+						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> REUSE VEHICLE (was '%s')",
+						i, actorName, actorType, m_savedVehicleName.c_str()
+					);
+				}
+			}
+
+			if (roi) {
+				createdROIs.push_back(roi);
+			}
+			else {
+				SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> FAILED to create", i, actorName, actorType);
 			}
 		}
+
 	}
 
 	if (!createdROIs.empty()) {
@@ -1146,6 +1132,13 @@ void NpcAnimPlayer::Stop()
 	CleanupPhonemes();
 	CleanupProps();
 
+	// Restore borrowed vehicle ROI name after cleanup (CleanupProps skips it)
+	if (m_vehicleROI && !m_savedVehicleName.empty()) {
+		m_vehicleROI->SetName(m_savedVehicleName.c_str());
+		m_vehicleROI = nullptr;
+		m_savedVehicleName.clear();
+	}
+
 	delete[] m_roiMap;
 	m_roiMap = nullptr;
 	m_roiMapSize = 0;
@@ -1326,13 +1319,18 @@ void NpcAnimPlayer::CleanupProps()
 {
 	for (uint8_t i = 0; i < m_propCount; i++) {
 		if (m_propROIs[i]) {
+			// Skip borrowed vehicle ROI — it belongs to the ride animation system
+			if (m_propROIs[i] == m_vehicleROI) {
+				SDL_Log("NpcAnimPlayer: CleanupProps: SKIPPING borrowed vehicle ROI '%s'", m_propROIs[i]->GetName());
+				continue;
+			}
+
+			SDL_Log("NpcAnimPlayer: CleanupProps: releasing ROI '%s' (refCount=%u)", m_propROIs[i]->GetName(), CharacterManager()->GetRefCount(m_propROIs[i]));
 			VideoManager()->Get3DManager()->Remove(*m_propROIs[i]);
-			if (i < m_charCount) {
-				// Clone'd character — release via character manager
+			if (CharacterManager()->GetRefCount(m_propROIs[i]) > 0) {
 				CharacterManager()->ReleaseActor(m_propROIs[i]);
 			}
 			else {
-				// Auto ROI prop
 				CharacterManager()->ReleaseAutoROI(m_propROIs[i]);
 			}
 		}
@@ -1340,7 +1338,6 @@ void NpcAnimPlayer::CleanupProps()
 	delete[] m_propROIs;
 	m_propROIs = nullptr;
 	m_propCount = 0;
-	m_charCount = 0;
 }
 
 void NpcAnimPlayer::CleanupSounds()
