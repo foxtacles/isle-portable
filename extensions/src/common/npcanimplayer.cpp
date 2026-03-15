@@ -951,6 +951,40 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 		AnimUtils::BuildROIMap(data->anim, p_executingROI, m_propROIs, m_propCount, m_roiMap, m_roiMapSize);
 	}
 
+	// Dump final ROI map
+	if (m_roiMap) {
+		SDL_Log("NpcAnimPlayer: Final ROI map (%u entries):", m_roiMapSize);
+		for (MxU32 ri = 0; ri < m_roiMapSize; ri++) {
+			if (m_roiMap[ri]) {
+				SDL_Log("NpcAnimPlayer:   roiMap[%u] = '%s'", ri, m_roiMap[ri]->GetName());
+			}
+			else {
+				SDL_Log("NpcAnimPlayer:   roiMap[%u] = NULL", ri);
+			}
+		}
+	}
+
+	// Dump animation tree node ROI indices after BuildROIMap
+	{
+		std::function<void(LegoTreeNode*, int)> dumpIndices = [&](LegoTreeNode* node, int depth) {
+			LegoAnimNodeData* nd = (LegoAnimNodeData*) node->GetData();
+			const char* name = nd ? nd->GetName() : "(null)";
+			MxU32 idx = nd ? nd->GetROIIndex() : 0;
+			char indent[64] = {};
+			for (int d = 0; d < depth && d < 30; d++) {
+				indent[d * 2] = ' ';
+				indent[d * 2 + 1] = ' ';
+			}
+			const char* roiName = (idx > 0 && idx < m_roiMapSize && m_roiMap[idx]) ? m_roiMap[idx]->GetName() : "(unmapped)";
+			SDL_Log("NpcAnimPlayer: %s '%s' roiIdx=%u -> '%s'", indent, name, idx, roiName);
+			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
+				dumpIndices(node->GetChild(i), depth + 1);
+			}
+		};
+		SDL_Log("NpcAnimPlayer: Animation tree with ROI assignments:");
+		dumpIndices(data->anim->GetRoot(), 0);
+	}
+
 	// Save initial transform
 	m_savedTransform = p_executingROI->GetLocal2World();
 

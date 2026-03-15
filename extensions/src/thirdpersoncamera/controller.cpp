@@ -211,8 +211,9 @@ void Controller::Tick(float p_deltaTime)
 		m_orbit.ApplyOrbitCamera();
 	}
 
-	// Small vehicle with ride animation
-	if (m_animator.GetCurrentVehicleType() != VEHICLE_NONE) {
+	// Small vehicle with ride animation (skip when NPC animation is active —
+	// NpcAnimPlayer handles positioning the player and vehicle ROI)
+	if (m_animator.GetCurrentVehicleType() != VEHICLE_NONE && !m_npcAnimPlaying) {
 		m_animator.StopClickAnimation();
 		if (m_animator.GetRideAnim() && m_animator.GetRideRoiMap()) {
 			LegoPathActor* actor = UserActor();
@@ -257,6 +258,14 @@ void Controller::Tick(float p_deltaTime)
 		return;
 	}
 
+	// When NPC animation is playing, it handles all ROI positioning.
+	// Skip sync, walk/idle/emote animation, and movement.
+	if (m_npcAnimPlaying) {
+		userActor->SetWorldSpeed(0.0f);
+		NavController()->SetLinearVel(0.0f);
+		return;
+	}
+
 	// Sync display clone position from native ROI
 	if (m_display.GetDisplayROI() && m_display.GetDisplayROI() == m_playerROI) {
 		m_display.SyncTransformFromNative(userActor->GetROI());
@@ -264,7 +273,7 @@ void Controller::Tick(float p_deltaTime)
 
 	float speed = userActor->GetWorldSpeed();
 	bool isMoving = SDL_fabsf(speed) > 0.01f;
-	if (m_animator.IsInMultiPartEmote() || m_npcAnimPlaying) {
+	if (m_animator.IsInMultiPartEmote()) {
 		isMoving = false;
 		userActor->SetWorldSpeed(0.0f);
 		NavController()->SetLinearVel(0.0f);
