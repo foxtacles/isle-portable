@@ -542,6 +542,7 @@ if (ISLE_EXTENSIONS)
     extensions/src/common/customizestate.cpp
     extensions/src/common/npcanimcatalog.cpp
     extensions/src/common/npcanimplayer.cpp
+    extensions/src/common/pathutils.cpp
 
     # Third person camera extension
     extensions/src/thirdpersoncamera.cpp

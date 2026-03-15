@@ -4,6 +4,7 @@
 #include "anim/legoanim.h"
 #include "extensions/common/animutils.h"
 #include "extensions/common/charactercloner.h"
+#include "extensions/common/pathutils.h"
 #include "flic.h"
 #include "legocachsound.h"
 #include "legocharactermanager.h"
@@ -17,33 +18,13 @@
 #include "mxgeometry/mxgeometry3d.h"
 #include "roi/legoroi.h"
 
-#include <SDL3/SDL_timer.h>
-
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_timer.h>
 #include <file.h>
-#include <object.h>
-#include <sitypes.h>
+#include <interleaf.h>
 
 using namespace Extensions::Common;
-
-// RIFF chunk IDs (matching libweaver sitypes.h)
-static const uint32_t RIFF_ID = 0x46464952;
-static const uint32_t OMNI_ID = 0x494e4d4f;
-static const uint32_t LIST_ID = 0x5453494c;
-static const uint32_t MxHd_ID = 0x6448784d;
-static const uint32_t MxOf_ID = 0x664f784d;
-static const uint32_t MxSt_ID = 0x7453784d;
-static const uint32_t MxOb_ID = 0x624f784d;
-static const uint32_t MxCh_ID = 0x6843784d;
-static const uint32_t MxDa_ID = 0x6144784d;
-
-// MxCh header size (flags + object + time + data_sz = 2+4+4+4 = 14)
-static const uint32_t MXCH_HEADER_SIZE = 14;
-
-// MxCh flags
-static const uint16_t FLAG_SPLIT = 0x10;
-static const uint16_t FLAG_END = 0x02;
 
 // --- NpcAnimData ---
 
@@ -99,34 +80,12 @@ NpcAnimData& NpcAnimData::operator=(NpcAnimData&& p_other) noexcept
 	return *this;
 }
 
-// --- ObjectTree ---
-
-NpcAnimPlayer::ObjectTree::~ObjectTree()
-{
-	delete root;
-}
-
-NpcAnimPlayer::ObjectTree::ObjectTree(ObjectTree&& p_other) noexcept : root(p_other.root)
-{
-	p_other.root = nullptr;
-}
-
-NpcAnimPlayer::ObjectTree& NpcAnimPlayer::ObjectTree::operator=(ObjectTree&& p_other) noexcept
-{
-	if (this != &p_other) {
-		delete root;
-		root = p_other.root;
-		p_other.root = nullptr;
-	}
-	return *this;
-}
-
 // --- NpcAnimPlayer ---
 
 NpcAnimPlayer::NpcAnimPlayer()
-	: m_siFile(nullptr), m_siReady(false), m_bufferSize(0), m_playing(false), m_rebaseComputed(false),
-	  m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr), m_vehicleROI(nullptr),
-	  m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr), m_propCount(0)
+	: m_siFile(nullptr), m_interleaf(nullptr), m_siReady(false), m_playing(false),
+	  m_rebaseComputed(false), m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr),
+	  m_vehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr), m_propCount(0)
 {
 }
 
@@ -135,6 +94,7 @@ NpcAnimPlayer::~NpcAnimPlayer()
 	if (m_playing) {
 		Stop();
 	}
+	delete m_interleaf;
 	delete m_siFile;
 }
 
@@ -144,25 +104,23 @@ bool NpcAnimPlayer::OpenSI()
 		return true;
 	}
 
+	// Path matches islefiles.cpp entry: /LEGO/Scripts/Isle/ISLE.SI
 	m_siFile = new si::File();
 
-	// Path matches islefiles.cpp entry: /LEGO/Scripts/Isle/ISLE.SI
-	MxString path = MxString(MxOmni::GetHD()) + "\\lego\\scripts\\isle\\isle.si";
-	path.MapPathToFilesystem();
-	if (!m_siFile->Open(path.GetData(), si::File::Read)) {
-		// Try CD path
-		path = MxString(MxOmni::GetCD()) + "\\lego\\scripts\\isle\\isle.si";
-		path.MapPathToFilesystem();
-		if (!m_siFile->Open(path.GetData(), si::File::Read)) {
-			SDL_Log("NpcAnimPlayer: Could not open ISLE.SI (tried HD and CD paths)");
-			delete m_siFile;
-			m_siFile = nullptr;
-			return false;
-		}
+	MxString path;
+	if (!ResolveGamePath("\\lego\\scripts\\isle\\isle.si", path) ||
+		!m_siFile->Open(path.GetData(), si::File::Read)) {
+		SDL_Log("NpcAnimPlayer: Could not open ISLE.SI (tried HD and CD paths)");
+		delete m_siFile;
+		m_siFile = nullptr;
+		return false;
 	}
 
-	if (!ReadSIHeader()) {
+	m_interleaf = new si::Interleaf();
+	if (m_interleaf->Read(m_siFile, si::Interleaf::HeaderOnly) != si::Interleaf::ERROR_SUCCESS) {
 		SDL_Log("NpcAnimPlayer: Could not read ISLE.SI header");
+		delete m_interleaf;
+		m_interleaf = nullptr;
 		m_siFile->Close();
 		delete m_siFile;
 		m_siFile = nullptr;
@@ -170,343 +128,30 @@ bool NpcAnimPlayer::OpenSI()
 	}
 
 	m_siReady = true;
-	SDL_Log("NpcAnimPlayer: ISLE.SI opened, %zu offset table entries", m_offsetTable.size());
-	return true;
-}
-
-// Read just the RIFF header, MxHd, and MxOf offset table.
-// These are contiguous at the start of the file (one fetch in Emscripten).
-bool NpcAnimPlayer::ReadSIHeader()
-{
-	// RIFF header
-	uint32_t riffId = m_siFile->ReadU32();
-	m_siFile->ReadU32(); // size
-	uint32_t riffType = m_siFile->ReadU32();
-	if (riffId != RIFF_ID || riffType != OMNI_ID) {
-		SDL_Log("NpcAnimPlayer: Not a valid SI file");
-		return false;
-	}
-
-	// MxHd
-	uint32_t mxhdId = m_siFile->ReadU32();
-	uint32_t mxhdSize = m_siFile->ReadU32();
-	if (mxhdId != MxHd_ID) {
-		SDL_Log("NpcAnimPlayer: Expected MxHd, got 0x%x", mxhdId);
-		return false;
-	}
-	m_siFile->ReadU32(); // version
-	m_bufferSize = m_siFile->ReadU32();
-	m_siFile->ReadU32(); // buffer count
-	// Skip any remaining MxHd data
-	if (mxhdSize > 12) {
-		m_siFile->seek(mxhdSize - 12, si::File::SeekCurrent);
-	}
-
-	// MxOf
-	uint32_t mxofId = m_siFile->ReadU32();
-	uint32_t mxofSize = m_siFile->ReadU32();
-	if (mxofId != MxOf_ID) {
-		SDL_Log("NpcAnimPlayer: Expected MxOf, got 0x%x", mxofId);
-		return false;
-	}
-	// The declared count is the number of offset entries.
-	// MxDSFile::ReadChunks uses this count directly (not chunk size).
-	uint32_t offsetCount = m_siFile->ReadU32();
-	m_offsetTable.resize(offsetCount);
-	for (uint32_t i = 0; i < offsetCount; i++) {
-		m_offsetTable[i] = m_siFile->ReadU32();
-	}
-
-	SDL_Log("NpcAnimPlayer: Read offset table: %u entries", offsetCount);
-	return true;
-}
-
-// Read a single MxOb from the current file position, returning a new Object.
-si::Object* NpcAnimPlayer::ReadMxOb(si::File* p_file)
-{
-	si::Object* obj = new si::Object();
-
-	obj->type_ = static_cast<si::MxOb::Type>(p_file->ReadU16());
-	obj->presenter_ = p_file->ReadString();
-	obj->unknown1_ = p_file->ReadU32();
-	obj->name_ = p_file->ReadString();
-	obj->id_ = p_file->ReadU32();
-	obj->flags_ = p_file->ReadU32();
-	obj->unknown4_ = p_file->ReadU32();
-	obj->duration_ = p_file->ReadU32();
-	obj->loops_ = p_file->ReadU32();
-	obj->location_ = p_file->ReadVector3();
-	obj->direction_ = p_file->ReadVector3();
-	obj->up_ = p_file->ReadVector3();
-
-	uint16_t extraSz = p_file->ReadU16();
-	obj->extra_ = p_file->ReadBytes(extraSz);
-
-	// Types Presenter, World, Animation skip the filename/filetype fields
-	obj->filetype_ = static_cast<si::MxOb::FileType>(0);
-	obj->volume_ = 0;
-	if (obj->type_ != si::MxOb::Presenter && obj->type_ != si::MxOb::World &&
-		obj->type_ != si::MxOb::Animation) {
-		obj->filename_ = p_file->ReadString();
-		obj->unknown26_ = p_file->ReadU32();
-		obj->unknown27_ = p_file->ReadU32();
-		obj->unknown28_ = p_file->ReadU32();
-		obj->filetype_ = static_cast<si::MxOb::FileType>(p_file->ReadU32());
-		obj->unknown29_ = p_file->ReadU32();
-		obj->unknown30_ = p_file->ReadU32();
-
-		if (obj->filetype_ == si::MxOb::WAV) {
-			obj->volume_ = p_file->ReadU32();
-		}
-	}
-
-	obj->time_offset_ = 0;
-
-	return obj;
-}
-
-// Read data chunks from the MxSt, populating data_ on child objects.
-void NpcAnimPlayer::ReadDataChunks(si::File* p_file, uint32_t p_stEnd, si::Object* p_root)
-{
-	// Build ID -> Object map for this tree
-	std::map<uint32_t, si::Object*> idMap;
-	idMap[p_root->id()] = p_root;
-	for (si::Core* childCore : p_root->GetChildren()) {
-		si::Object* child = dynamic_cast<si::Object*>(childCore);
-		if (child) {
-			idMap[child->id()] = child;
-		}
-	}
-
-	// Track split chunk assembly
-	uint32_t joiningSize = 0;
-	uint32_t joiningProgress = 0;
-
-	uint32_t chunkCount = 0;
-
-	while (!p_file->atEnd() && (p_file->pos() + 8) < p_stEnd) {
-		// Buffer alignment (same as interleaf.cpp ReadObjectData)
-		if (m_bufferSize > 0) {
-			uint32_t oib = p_file->pos() % m_bufferSize;
-			if (oib + 8 > m_bufferSize) {
-				p_file->seek(m_bufferSize - oib, si::File::SeekCurrent);
-			}
-		}
-
-		uint32_t pos = p_file->pos();
-		uint32_t id = p_file->ReadU32();
-		uint32_t size = p_file->ReadU32();
-
-		if (chunkCount < 8 || (id != MxCh_ID && id != LIST_ID)) {
-			SDL_Log(
-				"NpcAnimPlayer: ReadDataChunks chunk at pos=%u id=0x%x size=%u (stEnd=%u)",
-				pos,
-				id,
-				size,
-				p_stEnd
-			);
-		}
-
-		if (id == MxCh_ID) {
-			uint16_t flags = p_file->ReadU16();
-			uint32_t objectId = p_file->ReadU32();
-			uint32_t time = p_file->ReadU32();
-			uint32_t dataSz = p_file->ReadU32();
-
-			si::bytearray data = p_file->ReadBytes(size - MXCH_HEADER_SIZE);
-
-			// RIFF word-alignment: skip padding byte for odd-sized chunks
-			if (size % 2 == 1) {
-				p_file->seek(1, si::File::SeekCurrent);
-			}
-
-			if (flags & FLAG_END) {
-				chunkCount++;
-				continue;
-			}
-
-			auto it = idMap.find(objectId);
-			if (it != idMap.end()) {
-				si::Object* obj = it->second;
-
-				if ((flags & FLAG_SPLIT) && joiningSize > 0) {
-					obj->data_.back().append(data);
-					joiningProgress += data.size();
-					if (joiningProgress >= joiningSize) {
-						joiningProgress = 0;
-						joiningSize = 0;
-					}
-				}
-				else {
-					obj->data_.push_back(data);
-					if (obj->data_.size() == 2) {
-						obj->time_offset_ = time;
-					}
-					if (flags & FLAG_SPLIT) {
-						joiningProgress = data.size();
-						joiningSize = dataSz;
-					}
-				}
-			}
-			chunkCount++;
-		}
-		else if (id == LIST_ID) {
-			p_file->ReadU32(); // list type
-		}
-		else if (id == MxSt_ID || id == MxDa_ID) {
-			// MxSt/MxDa act as container markers with no extra data (same as libweaver)
-		}
-		else {
-			// Skip unknown chunk
-			p_file->seek(pos + 8 + size + (size % 2), si::File::SeekStart);
-		}
-	}
-
-	SDL_Log("NpcAnimPlayer: ReadDataChunks processed %u MxCh chunks", chunkCount);
-	for (auto& [objId, obj] : idMap) {
-		if (!obj->data_.empty()) {
-			SDL_Log("NpcAnimPlayer:   Object %u: %zu data chunks", objId, obj->data_.size());
-		}
-	}
-}
-
-// Read a specific object's MxSt: parse its MxOb tree + read data chunks.
-bool NpcAnimPlayer::ReadMxSt(uint32_t p_offset, si::Object* p_root)
-{
-	m_siFile->seek(p_offset, si::File::SeekStart);
-
-	// MxSt is a raw RIFF chunk (not a LIST subtype)
-	uint32_t stId = m_siFile->ReadU32();
-	uint32_t stSize = m_siFile->ReadU32();
-	uint32_t stEnd = (uint32_t) m_siFile->pos() + stSize;
-
-	if (stId != MxSt_ID) {
-		SDL_Log("NpcAnimPlayer: Expected MxSt at offset %u, got 0x%x", p_offset, stId);
-		return false;
-	}
-
-	// MxOb header (composite object)
-	uint32_t mxobId = m_siFile->ReadU32();
-	uint32_t mxobSize = m_siFile->ReadU32();
-	uint32_t mxobEnd = (uint32_t) m_siFile->pos() + mxobSize;
-
-	if (mxobId != MxOb_ID) {
-		SDL_Log("NpcAnimPlayer: Expected MxOb, got 0x%x", mxobId);
-		return false;
-	}
-
-	// Read the composite object metadata
-	si::Object* temp = ReadMxOb(m_siFile);
-	p_root->type_ = temp->type_;
-	p_root->presenter_ = temp->presenter_;
-	p_root->name_ = temp->name_;
-	p_root->id_ = temp->id_;
-	p_root->flags_ = temp->flags_;
-	p_root->duration_ = temp->duration_;
-	p_root->filename_ = temp->filename_;
-	p_root->filetype_ = temp->filetype_;
-	p_root->volume_ = temp->volume_;
-	p_root->extra_ = temp->extra_;
-	p_root->time_offset_ = 0;
-	delete temp;
-
-	SDL_Log(
-		"NpcAnimPlayer: Read composite object id=%u type=%d presenter='%s'",
-		p_root->id(),
-		(int) p_root->type(),
-		p_root->presenter_.c_str()
-	);
-
-	// Read child MxObs if present (composite objects have a LIST MxCh with children)
-	if (m_siFile->pos() + 8 < mxobEnd) {
-		uint32_t childListId = m_siFile->ReadU32();
-		uint32_t childListSize = m_siFile->ReadU32();
-		uint32_t childListEnd = (uint32_t) m_siFile->pos() + childListSize;
-
-		if (childListId == LIST_ID) {
-			uint32_t childListType = m_siFile->ReadU32();
-			uint32_t childCount = m_siFile->ReadU32();
-
-			SDL_Log("NpcAnimPlayer: Composite has %u children", childCount);
-
-			for (uint32_t i = 0; i < childCount && m_siFile->pos() + 8 < childListEnd; i++) {
-				// Record position before reading chunk header
-				uint32_t chunkStart = (uint32_t) m_siFile->pos();
-				uint32_t childChunkId = m_siFile->ReadU32();
-				uint32_t childChunkSize = m_siFile->ReadU32();
-				// Chunk data ends at chunkStart + 8 (header) + childChunkSize
-				uint32_t childChunkEnd = chunkStart + 8 + childChunkSize;
-
-				if (childChunkId == MxOb_ID) {
-					si::Object* child = ReadMxOb(m_siFile);
-					p_root->AppendChild(child);
-					SDL_Log(
-						"NpcAnimPlayer:   Child %u: id=%u type=%d presenter='%s' filetype=0x%x",
-						i,
-						child->id(),
-						(int) child->type(),
-						child->presenter_.c_str(),
-						(unsigned) child->filetype()
-					);
-				}
-
-				// Seek to end of this child chunk (skips any remaining data
-				// like nested LIST MxCh for sub-composites)
-				m_siFile->seek(childChunkEnd + (childChunkSize % 2), si::File::SeekStart);
-			}
-		}
-	}
-
-	// Seek past the MxOb chunk to the data section
-	uint32_t dataStart = mxobEnd + (mxobSize % 2);
-	m_siFile->seek(dataStart, si::File::SeekStart);
-
-	SDL_Log(
-		"NpcAnimPlayer: Data section at %u, MxSt end at %u (%u bytes of data)",
-		dataStart,
-		stEnd,
-		stEnd - dataStart
-	);
-
-	// Read data chunks (LIST MxDa with MxCh entries)
-	ReadDataChunks(m_siFile, stEnd, p_root);
-
+	SDL_Log("NpcAnimPlayer: ISLE.SI opened, %zu offset table entries", m_interleaf->GetChildCount());
 	return true;
 }
 
 bool NpcAnimPlayer::ReadObject(uint32_t p_objectId)
 {
-	if (!m_siReady || !m_siFile) {
+	if (!m_siReady) {
 		return false;
 	}
 
-	// Already read?
-	if (m_objectTrees.find(p_objectId) != m_objectTrees.end()) {
+	// Check if already read (type != Null means populated)
+	size_t childCount = m_interleaf->GetChildCount();
+	if (p_objectId >= childCount) {
+		SDL_Log("NpcAnimPlayer: Object %u out of range (%zu slots)", p_objectId, childCount);
+		return false;
+	}
+
+	si::Object* obj = static_cast<si::Object*>(m_interleaf->GetChildAt(p_objectId));
+	if (obj->type() != si::MxOb::Null) {
 		return true;
 	}
 
-	// The objectId IS the index into the offset table.
-	// (see MxStreamController::FUN_100c1a00: offset = provider->GetBufferForDWords()[objectId])
-	if (p_objectId >= m_offsetTable.size()) {
-		SDL_Log("NpcAnimPlayer: Object %u out of offset table range (%zu entries)", p_objectId, m_offsetTable.size());
-		return false;
-	}
-
-	uint32_t offset = m_offsetTable[p_objectId];
-	if (offset == 0) {
-		SDL_Log("NpcAnimPlayer: Object %u has no offset (slot is empty)", p_objectId);
-		return false;
-	}
-
-	SDL_Log("NpcAnimPlayer: Reading object %u from offset %u", p_objectId, offset);
-
-	ObjectTree tree;
-	tree.root = new si::Object();
-	if (ReadMxSt(offset, tree.root)) {
-		m_objectTrees.emplace(p_objectId, std::move(tree));
-		return true;
-	}
-	return false;
+	SDL_Log("NpcAnimPlayer: Reading object %u", p_objectId);
+	return m_interleaf->ReadObject(m_siFile, p_objectId) == si::Interleaf::ERROR_SUCCESS;
 }
 
 bool NpcAnimPlayer::ParseAnimationChild(si::Object* p_child, NpcAnimData& p_data)
@@ -698,27 +343,15 @@ NpcAnimData* NpcAnimPlayer::EnsureCached(uint32_t p_objectId)
 		return nullptr;
 	}
 
-	auto treeIt = m_objectTrees.find(p_objectId);
-	if (treeIt == m_objectTrees.end() || !treeIt->second.root) {
-		return nullptr;
-	}
+	si::Object* composite = static_cast<si::Object*>(m_interleaf->GetChildAt(p_objectId));
 
-	si::Object* composite = treeIt->second.root;
-
-	SDL_Log(
-		"NpcAnimPlayer: Processing composite id=%u, %zu children",
-		composite->id(),
-		composite->GetChildCount()
-	);
+	SDL_Log("NpcAnimPlayer: Processing composite id=%u, %zu children", composite->id(), composite->GetChildCount());
 
 	NpcAnimData data;
 	bool hasAnim = false;
 
 	for (size_t i = 0; i < composite->GetChildCount(); i++) {
-		si::Object* child = dynamic_cast<si::Object*>(composite->GetChildAt(i));
-		if (!child) {
-			continue;
-		}
+		si::Object* child = static_cast<si::Object*>(composite->GetChildAt(i));
 
 		SDL_Log(
 			"NpcAnimPlayer:   Checking child %zu: id=%u type=%d presenter='%s' data_chunks=%zu",
@@ -733,8 +366,7 @@ NpcAnimData* NpcAnimPlayer::EnsureCached(uint32_t p_objectId)
 		if (child->presenter_.find("LegoPhonemePresenter") != std::string::npos) {
 			ParsePhonemeChild(child, data);
 		}
-		else if (child->presenter_.find("LegoAnimPresenter") != std::string::npos ||
-				 child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos) {
+		else if (child->presenter_.find("LegoAnimPresenter") != std::string::npos || child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos) {
 			if (!hasAnim) {
 				if (ParseAnimationChild(child, data)) {
 					hasAnim = true;
@@ -853,12 +485,16 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 				if (roi) {
 					roi->SetName(lowered.c_str());
 					VideoManager()->Get3DManager()->Add(*roi);
-					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> CHARACTER '%s'", i, actorName, actorType, lowered.c_str());
+					SDL_Log(
+						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> CHARACTER '%s'",
+						i,
+						actorName,
+						actorType,
+						lowered.c_str()
+					);
 				}
 			}
-			else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed ||
-					 actorType == LegoAnimActorEntry::e_sceneRoi1 ||
-					 actorType == LegoAnimActorEntry::e_sceneRoi2) {
+			else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed || actorType == LegoAnimActorEntry::e_sceneRoi1 || actorType == LegoAnimActorEntry::e_sceneRoi2) {
 				// Prop with digit-trimmed LOD name
 				std::string lodName(lowered);
 				while (lodName.size() > 1) {
@@ -876,7 +512,14 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 				roi = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
 				if (roi) {
 					roi->SetName(lowered.c_str());
-					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s' (lod='%s')", i, actorName, actorType, lowered.c_str(), lodName.c_str());
+					SDL_Log(
+						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s' (lod='%s')",
+						i,
+						actorName,
+						actorType,
+						lowered.c_str(),
+						lodName.c_str()
+					);
 				}
 			}
 			else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoi) {
@@ -886,7 +529,13 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 				roi = CharacterManager()->CreateAutoROI(uniqueName, lowered.c_str(), FALSE);
 				if (roi) {
 					roi->SetName(lowered.c_str());
-					SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s'", i, actorName, actorType, lowered.c_str());
+					SDL_Log(
+						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> PROP '%s'",
+						i,
+						actorName,
+						actorType,
+						lowered.c_str()
+					);
 				}
 			}
 			else {
@@ -911,7 +560,11 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 					roi->SetName(lowered.c_str());
 					SDL_Log(
 						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> SCENE PROP '%s' (lod='%s')",
-						i, actorName, actorType, lowered.c_str(), lodName.c_str()
+						i,
+						actorName,
+						actorType,
+						lowered.c_str(),
+						lodName.c_str()
 					);
 				}
 				else if (p_vehicleROI && !m_vehicleROI) {
@@ -922,7 +575,10 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 					roi = p_vehicleROI;
 					SDL_Log(
 						"NpcAnimPlayer:   Actor %u: '%s' type=%u -> REUSE VEHICLE (was '%s')",
-						i, actorName, actorType, m_savedVehicleName.c_str()
+						i,
+						actorName,
+						actorType,
+						m_savedVehicleName.c_str()
 					);
 				}
 			}
@@ -934,7 +590,6 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 				SDL_Log("NpcAnimPlayer:   Actor %u: '%s' type=%u -> FAILED to create", i, actorName, actorType);
 			}
 		}
-
 	}
 
 	if (!createdROIs.empty()) {
@@ -975,7 +630,8 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI, L
 				indent[d * 2] = ' ';
 				indent[d * 2 + 1] = ' ';
 			}
-			const char* roiName = (idx > 0 && idx < m_roiMapSize && m_roiMap[idx]) ? m_roiMap[idx]->GetName() : "(unmapped)";
+			const char* roiName =
+				(idx > 0 && idx < m_roiMapSize && m_roiMap[idx]) ? m_roiMap[idx]->GetName() : "(unmapped)";
 			SDL_Log("NpcAnimPlayer: %s '%s' roiIdx=%u -> '%s'", indent, name, idx, roiName);
 			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
 				dumpIndices(node->GetChild(i), depth + 1);
@@ -1078,8 +734,8 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 			// Find the player character node and compute its WORLD transform
 			// at time 0 by accumulating parent transforms (handles nested
 			// '-' nodes like -SBA001BU -> -TILT -> BU).
-			std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin =
-				[&](LegoTreeNode* node, MxMatrix& parentWorld) -> bool {
+			std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin = [&](LegoTreeNode* node,
+																		   MxMatrix& parentWorld) -> bool {
 				LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
 				MxU32 roiIdx = data ? data->GetROIIndex() : 0;
 
@@ -1115,9 +771,9 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 			}
 			// Translation: -R^T * t
 			for (int r = 0; r < 3; r++) {
-				invAnimPose0[3][r] = -(invAnimPose0[0][r] * m_animPose0[3][0] +
-									   invAnimPose0[1][r] * m_animPose0[3][1] +
-									   invAnimPose0[2][r] * m_animPose0[3][2]);
+				invAnimPose0[3][r] =
+					-(invAnimPose0[0][r] * m_animPose0[3][0] + invAnimPose0[1][r] * m_animPose0[3][1] +
+					  invAnimPose0[2][r] * m_animPose0[3][2]);
 			}
 
 			// rebaseMatrix = savedTransform * inverse(animPose0)
@@ -1130,12 +786,7 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 		// world-space to the player's local frame.
 		LegoTreeNode* root = m_currentData->anim->GetRoot();
 		for (LegoU32 i = 0; i < root->GetNumChildren(); i++) {
-			LegoROI::ApplyAnimationTransformation(
-				root->GetChild(i),
-				m_rebaseMatrix,
-				(LegoTime) elapsed,
-				m_roiMap
-			);
+			LegoROI::ApplyAnimationTransformation(root->GetChild(i), m_rebaseMatrix, (LegoTime) elapsed, m_roiMap);
 		}
 	}
 
@@ -1359,7 +1010,11 @@ void NpcAnimPlayer::CleanupProps()
 				continue;
 			}
 
-			SDL_Log("NpcAnimPlayer: CleanupProps: releasing ROI '%s' (refCount=%u)", m_propROIs[i]->GetName(), CharacterManager()->GetRefCount(m_propROIs[i]));
+			SDL_Log(
+				"NpcAnimPlayer: CleanupProps: releasing ROI '%s' (refCount=%u)",
+				m_propROIs[i]->GetName(),
+				CharacterManager()->GetRefCount(m_propROIs[i])
+			);
 			VideoManager()->Get3DManager()->Remove(*m_propROIs[i]);
 			if (CharacterManager()->GetRefCount(m_propROIs[i]) > 0) {
 				CharacterManager()->ReleaseActor(m_propROIs[i]);

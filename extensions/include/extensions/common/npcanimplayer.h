@@ -20,6 +20,7 @@ class MxBitmap;
 namespace si
 {
 class File;
+class Interleaf;
 class Object;
 } // namespace si
 
@@ -105,23 +106,8 @@ public:
 private:
 	// SI file state
 	si::File* m_siFile;
+	si::Interleaf* m_interleaf;
 	bool m_siReady;
-	uint32_t m_bufferSize; // SI interleave buffer size from MxHd
-
-	// Offset table: objectId (slot index) -> file offset of MxSt
-	std::vector<uint32_t> m_offsetTable;
-
-	// Per-object parsed trees (only for objects we've actually read)
-	struct ObjectTree {
-		si::Object* root; // Composite object with children
-		ObjectTree() : root(nullptr) {}
-		~ObjectTree();
-		ObjectTree(const ObjectTree&) = delete;
-		ObjectTree& operator=(const ObjectTree&) = delete;
-		ObjectTree(ObjectTree&& p_other) noexcept;
-		ObjectTree& operator=(ObjectTree&& p_other) noexcept;
-	};
-	std::map<uint32_t, ObjectTree> m_objectTrees;
 
 	// Cached animation data keyed by objectId
 	std::map<uint32_t, NpcAnimData> m_cache;
@@ -161,12 +147,6 @@ private:
 
 	// Phoneme playback
 	std::vector<PhonemeState> m_phonemeStates;
-
-	// SI parsing helpers
-	bool ReadSIHeader();
-	bool ReadMxSt(uint32_t p_offset, si::Object* p_root);
-	si::Object* ReadMxOb(si::File* p_file);
-	void ReadDataChunks(si::File* p_file, uint32_t p_stEnd, si::Object* p_root);
 
 	// Animation parsing helpers
 	bool ParseAnimationChild(si::Object* p_child, NpcAnimData& p_data);
