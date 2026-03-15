@@ -30,7 +30,7 @@ using namespace Extensions::ThirdPersonCamera;
 
 Controller::Controller()
 	: m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true, /*.propSuffix=*/0}), m_enabled(false),
-	  m_active(false), m_pendingWorldTransition(false), m_npcAnimPlaying(false), m_playerROI(nullptr)
+	  m_active(false), m_pendingWorldTransition(false), m_animPlaying(false), m_playerROI(nullptr)
 {
 }
 
@@ -51,11 +51,13 @@ void Controller::Disable(bool p_preserveTouch)
 
 void Controller::Deactivate()
 {
-	// Notify the NPC animation callback before destroying the display ROI.
-	// NpcAnimPlayer holds a reference to the ROI and has prop ROIs in the scene.
-	if (m_npcAnimPlaying && m_npcAnimStopCallback) {
-		m_npcAnimStopCallback();
-		m_npcAnimPlaying = false;
+	// Stop external animation before destroying the display ROI
+	if (m_animPlaying) {
+		if (m_animStopCallback) {
+			m_animStopCallback();
+		}
+		m_animPlaying = false;
+		m_animStopCallback = nullptr;
 	}
 
 	if (m_active && m_playerROI) {
@@ -211,9 +213,9 @@ void Controller::Tick(float p_deltaTime)
 		m_orbit.ApplyOrbitCamera();
 	}
 
-	// Small vehicle with ride animation (skip when NPC animation is active —
-	// NpcAnimPlayer handles positioning the player and vehicle ROI)
-	if (m_animator.GetCurrentVehicleType() != VEHICLE_NONE && !m_npcAnimPlaying) {
+	// Small vehicle with ride animation (skip when external animation is active —
+	// the animation controller handles positioning the player and vehicle ROI)
+	if (m_animator.GetCurrentVehicleType() != VEHICLE_NONE && !m_animPlaying) {
 		m_animator.StopClickAnimation();
 		if (m_animator.GetRideAnim() && m_animator.GetRideRoiMap()) {
 			LegoPathActor* actor = UserActor();
@@ -258,9 +260,9 @@ void Controller::Tick(float p_deltaTime)
 		return;
 	}
 
-	// When NPC animation is playing, it handles all ROI positioning.
+	// When an external animation is playing, it handles all ROI positioning.
 	// Skip sync, walk/idle/emote animation, and movement.
-	if (m_npcAnimPlaying) {
+	if (m_animPlaying) {
 		userActor->SetWorldSpeed(0.0f);
 		NavController()->SetLinearVel(0.0f);
 		return;
@@ -356,10 +358,13 @@ void Controller::OnWorldDisabled(LegoWorld* p_world)
 		return;
 	}
 
-	// Stop NPC animation before destroying the display ROI
-	if (m_npcAnimPlaying && m_npcAnimStopCallback) {
-		m_npcAnimStopCallback();
-		m_npcAnimPlaying = false;
+	// Stop external animation before destroying the display ROI
+	if (m_animPlaying) {
+		if (m_animStopCallback) {
+			m_animStopCallback();
+		}
+		m_animPlaying = false;
+		m_animStopCallback = nullptr;
 	}
 
 	m_active = false;
@@ -388,7 +393,7 @@ MxBool Controller::HandleCameraRelativeMovement(
 		p_newPos,
 		p_newDir,
 		p_deltaTime,
-		m_animator.IsInMultiPartEmote() || m_npcAnimPlaying
+		m_animator.IsInMultiPartEmote() || m_animPlaying
 	);
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "extensions/common/npcanimcatalog.h"
-#include "extensions/common/npcanimplayer.h"
+#include "extensions/multiplayer/animation/catalog.h"
+#include "extensions/multiplayer/animation/controller.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -79,9 +79,9 @@ public:
 	bool IsClonedCharacter(const char* p_name) const;
 	void SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType, uint8_t p_partIndex);
 
-	// Stop any playing NPC animation and release its resources.
+	// Stop any playing animation and release its resources.
 	// Must be called before the display ROI is destroyed.
-	void StopNpcAnimation();
+	void StopAnimation();
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -156,10 +156,10 @@ private:
 	bool m_wasInRestrictedArea;
 
 	// NPC animation playback
-	Extensions::Common::NpcAnimCatalog m_npcAnimCatalog;
-	Extensions::Common::NpcAnimPlayer m_npcAnimPlayer;
+	Multiplayer::Animation::Catalog m_animCatalog;
+	Multiplayer::Animation::Controller m_animController;
 
-	void TickNpcAnim(float p_deltaTime);
+	void TickAnimation(float p_deltaTime);
 
 	static const uint32_t BROADCAST_INTERVAL_MS = 66; // ~15Hz
 	static const uint32_t TIMEOUT_MS = 5000;          // 5 second timeout

@@ -540,8 +540,6 @@ if (ISLE_EXTENSIONS)
     extensions/src/common/charactercloner.cpp
     extensions/src/common/charactercustomizer.cpp
     extensions/src/common/customizestate.cpp
-    extensions/src/common/npcanimcatalog.cpp
-    extensions/src/common/npcanimplayer.cpp
     extensions/src/common/pathutils.cpp
 
     # Third person camera extension
@@ -552,6 +550,11 @@ if (ISLE_EXTENSIONS)
     extensions/src/thirdpersoncamera/displayactor.cpp
 
     # Multiplayer extension
+    extensions/src/multiplayer/animation/catalog.cpp
+    extensions/src/multiplayer/animation/loader.cpp
+    extensions/src/multiplayer/animation/controller.cpp
+    extensions/src/multiplayer/animation/audioplayer.cpp
+    extensions/src/multiplayer/animation/phonemeplayer.cpp
     extensions/src/multiplayer.cpp
     extensions/src/multiplayer/namebubblerenderer.cpp
     extensions/src/multiplayer/networkmanager.cpp

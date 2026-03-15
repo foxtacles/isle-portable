@@ -7,7 +7,6 @@
 #include "misc/legotree.h"
 #include "roi/legoroi.h"
 
-#include <SDL3/SDL_log.h>
 #include <algorithm>
 #include <vector>
 
@@ -15,6 +14,14 @@ using namespace Extensions::Common;
 
 // Mirrors the game's UpdateStructMapAndROIIndex: assigns ROI indices at runtime
 // via SetROIIndex() since m_roiIndex starts at 0 for all animation nodes.
+//
+// Intentional divergences from LegoAnimPresenter::BuildROIMap (legoanimpresenter.cpp:413-530):
+// 1. No variable substitution -- we bypass the streaming pipeline, so the variable
+//    table lacks our entries. Direct name comparison instead.
+// 2. *-prefixed nodes search extraROIs -- the original's GetActorName() depends on
+//    presenter action context (m_action->GetUnknown24()). We search created extra
+//    ROIs directly.
+// 3. No LegoAnimStructMap dedup -- sequential indices, functionally correct.
 static void AssignROIIndices(
 	LegoTreeNode* p_node,
 	LegoROI* p_parentROI,
@@ -45,7 +52,6 @@ static void AssignROIIndices(
 				for (int e = 0; e < p_extraROICount; e++) {
 					matchedROI = p_extraROIs[e]->FindChildROI(searchName, p_extraROIs[e]);
 					if (matchedROI != nullptr) {
-						SDL_Log("AssignROIIndices: MATCHED '%s' -> extra[%d] '%s'", searchName, e, matchedROI->GetName());
 						roi = matchedROI;
 						matchedExtra = true;
 						break;
@@ -57,9 +63,6 @@ static void AssignROIIndices(
 				if (!p_rootClaimed) {
 					matchedROI = p_rootROI;
 					p_rootClaimed = true;
-				}
-				else {
-					SDL_Log("AssignROIIndices: root claimed, no extras for '%s'", name);
 				}
 			}
 		}

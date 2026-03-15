@@ -8,7 +8,6 @@ class ThirdPersonCameraExt;
 namespace Common
 {
 class CharacterCloner;
-class NpcAnimCatalog;
 }
 namespace ThirdPersonCamera
 {
@@ -20,6 +19,11 @@ namespace Multiplayer
 {
 class NetworkManager;
 class WorldStateSync;
+namespace Animation
+{
+class Catalog;
+class Controller;
+} // namespace Animation
 } // namespace Multiplayer
 
 #endif // EXTENSIONS_FWD_H

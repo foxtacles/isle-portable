@@ -3,8 +3,6 @@
 #include "extensions/common/animdata.h"
 #include "extensions/common/arearestriction.h"
 #include "extensions/common/charactercustomizer.h"
-#include "extensions/common/npcanimcatalog.h"
-#include "extensions/common/npcanimplayer.h"
 #include "extensions/multiplayer/namebubblerenderer.h"
 #include "extensions/thirdpersoncamera.h"
 #include "extensions/thirdpersoncamera/controller.h"
@@ -122,7 +120,7 @@ MxResult NetworkManager::Tickle()
 
 	ProcessIncomingPackets();
 	UpdateRemotePlayers(0.016f);
-	TickNpcAnim(0.016f);
+	TickAnimation(0.016f);
 
 	// Re-read time; ProcessIncomingPackets may have advanced SDL_GetTicks.
 	uint32_t timeoutNow = SDL_GetTicks();
@@ -198,13 +196,13 @@ bool NetworkManager::WasDisconnected() const
 	return m_transport && m_transport->WasDisconnected();
 }
 
-void NetworkManager::StopNpcAnimation()
+void NetworkManager::StopAnimation()
 {
-	if (m_npcAnimPlayer.IsPlaying()) {
-		m_npcAnimPlayer.Stop();
+	if (m_animController.IsPlaying()) {
+		m_animController.Stop();
 		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
-			cam->SetNpcAnimPlaying(false);
+			cam->SetAnimPlaying(false);
 		}
 	}
 }
@@ -243,9 +241,9 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 			EnforceDisableNPCs();
 		}
 
-		// Refresh NPC animation catalog from the animation manager
+		// Refresh animation catalog from the animation manager
 		if (AnimationManager()) {
-			m_npcAnimCatalog.Refresh(AnimationManager());
+			m_animCatalog.Refresh(AnimationManager());
 		}
 	}
 }
@@ -261,14 +259,8 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		m_wasInRestrictedArea = false;
 		m_worldSync.SetInIsleWorld(false);
 
-		// Stop NPC animation before ROIs are destroyed
-		if (m_npcAnimPlayer.IsPlaying()) {
-			m_npcAnimPlayer.Stop();
-			ThirdPersonCamera::Controller* cam = GetCamera();
-			if (cam) {
-				cam->SetNpcAnimPlaying(false);
-			}
-		}
+		// Stop animation before ROIs are destroyed
+		StopAnimation();
 
 		// Destroy local name bubble (ROI is about to be destroyed)
 		if (m_localNameBubble) {
@@ -360,8 +352,8 @@ void NetworkManager::ProcessPendingRequests()
 	// the request survives until the camera exists.
 	if (cam) {
 		if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
-			if (cam->IsNpcAnimPlaying()) {
-				// Ignore toggle during NPC animation — complete no-op
+			if (cam->IsAnimPlaying()) {
+				// Ignore toggle during animation — complete no-op
 			}
 			else if (cam->IsEnabled()) {
 				cam->Disable();
@@ -474,8 +466,8 @@ void NetworkManager::BroadcastLocalState()
 			msg.customizeFlags |= (frozenId & 0x07) << 2;
 		}
 
-		// Zero speed when in any phase of a multi-part emote or NPC anim
-		if (cam->IsInMultiPartEmote() || cam->IsNpcAnimPlaying()) {
+		// Zero speed when in any phase of a multi-part emote or animation playback
+		if (cam->IsInMultiPartEmote() || cam->IsAnimPlaying()) {
 			msg.speed = 0.0f;
 		}
 	}
@@ -709,26 +701,19 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 		return;
 	}
 
-	// TEST TRIGGER: When emote 0 (Wave) is triggered, play the first eligible
-	// NPC animation for the current display actor instead of the emote.
+	// TEST TRIGGER: When emote 0-2 is triggered, play the first eligible
+	// animation for the current display actor instead of the emote.
 	if ((p_emoteId == 0 || p_emoteId == 1 || p_emoteId == 2) && cam->IsActive() && cam->GetDisplayROI() &&
-		!m_npcAnimPlayer.IsPlaying()) {
+		!m_animController.IsPlaying()) {
 		uint8_t displayActorIndex = cam->GetDisplayActorIndex();
-		auto eligible = m_npcAnimCatalog.GetEligibleNpcAnimations(displayActorIndex);
+		auto eligible = m_animCatalog.GetEligibleNpcAnimations(displayActorIndex);
 		if (!eligible.empty()) {
 			size_t idx = SDL_min((size_t) p_emoteId, eligible.size() - 1);
-			const Common::NpcAnimEntry* entry = eligible[idx];
-			SDL_Log(
-				"NPC Anim Test: Playing '%s' (objectId=%u) for displayActor %u [%zu/%zu eligible]",
-				entry->name,
-				entry->objectId,
-				displayActorIndex,
-				idx + 1,
-				eligible.size()
-			);
-			cam->SetNpcAnimPlaying(true);
-			cam->SetNpcAnimStopCallback([this]() { m_npcAnimPlayer.Stop(); });
-			m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI(), cam->GetRideVehicleROI());
+			const Animation::CatalogEntry* entry = eligible[idx];
+			const AnimInfo* animInfo = m_animCatalog.GetAnimInfo(entry->animIndex);
+
+			cam->SetAnimPlaying(true, [this]() { m_animController.Stop(); });
+			m_animController.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
 
 			EmoteMsg msg{};
 			msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
@@ -868,19 +853,19 @@ void NetworkManager::SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType
 	SendMessage(msg);
 }
 
-void NetworkManager::TickNpcAnim(float p_deltaTime)
+void NetworkManager::TickAnimation(float p_deltaTime)
 {
-	if (!m_npcAnimPlayer.IsPlaying()) {
+	if (!m_animController.IsPlaying()) {
 		return;
 	}
 
-	m_npcAnimPlayer.Tick(p_deltaTime);
+	m_animController.Tick(p_deltaTime);
 
-	if (!m_npcAnimPlayer.IsPlaying()) {
+	if (!m_animController.IsPlaying()) {
 		// Animation finished
 		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
-			cam->SetNpcAnimPlaying(false);
+			cam->SetAnimPlaying(false);
 		}
 	}
 }
@@ -903,7 +888,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				it->second->GetCustomizeState(),
 				p_msg.changeType == CHANGE_MOOD
 			);
-			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote() && !m_npcAnimPlayer.IsPlaying()) {
+			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote() && !m_animController.IsPlaying()) {
 				it->second->StopClickAnimation();
 				MxU32 clickAnimId = Common::CharacterCustomizer::PlayClickAnimation(
 					it->second->GetROI(),
@@ -943,9 +928,9 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				p_msg.changeType == CHANGE_MOOD
 			);
 
-			// Only play click animation in 3rd person (not during multi-part emote or NPC anim)
+			// Only play click animation in 3rd person (not during multi-part emote or animation playback)
 			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote() &&
-				!cam->IsNpcAnimPlaying()) {
+				!cam->IsAnimPlaying()) {
 				cam->StopClickAnimation();
 				MxU32 clickAnimId =
 					Common::CharacterCustomizer::PlayClickAnimation(cam->GetDisplayROI(), cam->GetCustomizeState());

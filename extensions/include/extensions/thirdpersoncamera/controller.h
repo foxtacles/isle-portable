@@ -59,9 +59,15 @@ public:
 	bool IsInVehicle() const { return m_animator.IsInVehicle(); }
 	LegoROI* GetRideVehicleROI() const { return m_animator.GetRideVehicleROI(); }
 
-	void SetNpcAnimPlaying(bool p_playing) { m_npcAnimPlaying = p_playing; }
-	bool IsNpcAnimPlaying() const { return m_npcAnimPlaying; }
-	void SetNpcAnimStopCallback(std::function<void()> p_callback) { m_npcAnimStopCallback = p_callback; }
+	// Signal that an external animation is controlling the display ROI.
+	// p_onStop is called before the display ROI is destroyed (Deactivate/OnWorldDisabled)
+	// to allow the caller to clean up animation resources.
+	void SetAnimPlaying(bool p_animPlaying, std::function<void()> p_animStopCallback = nullptr)
+	{
+		m_animPlaying = p_animPlaying;
+		m_animStopCallback = p_animPlaying ? std::move(p_animStopCallback) : nullptr;
+	}
+	bool IsAnimPlaying() const { return m_animPlaying; }
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -112,8 +118,8 @@ private:
 	bool m_enabled;
 	bool m_active;
 	bool m_pendingWorldTransition;
-	bool m_npcAnimPlaying;
-	std::function<void()> m_npcAnimStopCallback;
+	bool m_animPlaying;
+	std::function<void()> m_animStopCallback;
 	LegoROI* m_playerROI;
 };
 
