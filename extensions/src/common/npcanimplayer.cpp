@@ -856,27 +856,51 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 					continue;
 				}
 
-				// Extra character — use CharacterCloner to build full compound ROI
-				std::string lowered(name);
+				// Strip '*' prefix if present for lookup
+				const char* lookupName = (*name == '*') ? name + 1 : name;
+				std::string lowered(lookupName);
 				std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
 
-				if (!CharacterManager()->GetActorInfo(lowered.c_str())) {
-					SDL_Log("NpcAnimPlayer: '%s' is not a known actor, skipping", lowered.c_str());
-					continue;
-				}
+				if (CharacterManager()->GetActorInfo(lowered.c_str())) {
+					// Known actor — use CharacterCloner for full compound ROI
+					char uniqueName[64];
+					SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_char_%s", lowered.c_str());
 
-				char uniqueName[64];
-				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_char_%s", lowered.c_str());
-
-				LegoROI* charROI = CharacterCloner::Clone(CharacterManager(), uniqueName, lowered.c_str());
-				if (charROI) {
-					charROI->SetName(lowered.c_str());
-					VideoManager()->Get3DManager()->Add(*charROI);
-					createdROIs.push_back(charROI);
-					SDL_Log("NpcAnimPlayer: Created extra character '%s'", lowered.c_str());
+					LegoROI* charROI = CharacterCloner::Clone(CharacterManager(), uniqueName, lowered.c_str());
+					if (charROI) {
+						charROI->SetName(lowered.c_str());
+						VideoManager()->Get3DManager()->Add(*charROI);
+						createdROIs.push_back(charROI);
+						SDL_Log("NpcAnimPlayer: Created extra character '%s'", lowered.c_str());
+					}
 				}
 				else {
-					SDL_Log("NpcAnimPlayer: Failed to create character '%s'", lowered.c_str());
+					// Not an actor — create as prop via CreateAutoROI.
+					// Trim trailing digits/underscores from LOD name
+					// (e.g. LETR12 -> letr), matching the original game's
+					// e_managedInvisibleRoiTrimmed logic.
+					std::string lodName(lowered);
+					while (lodName.size() > 1) {
+						char c = lodName.back();
+						if ((c >= '0' && c <= '9') || c == '_') {
+							lodName.pop_back();
+						}
+						else {
+							break;
+						}
+					}
+
+					char uniqueName[64];
+					SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
+					LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
+					if (propROI) {
+						propROI->SetName(lowered.c_str());
+						createdROIs.push_back(propROI);
+						SDL_Log("NpcAnimPlayer: Created prop '%s' (lod='%s')", lowered.c_str(), lodName.c_str());
+					}
+					else {
+						SDL_Log("NpcAnimPlayer: Failed to create prop '%s' (lod='%s')", lowered.c_str(), lodName.c_str());
+					}
 				}
 			}
 		};
@@ -900,10 +924,25 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 				continue;
 			}
 
+			// Trim trailing digits/underscores from LOD name
+			std::string lodName(name);
+			while (lodName.size() > 1) {
+				char c = lodName.back();
+				if ((c >= '0' && c <= '9') || c == '_') {
+					lodName.pop_back();
+				}
+				else {
+					break;
+				}
+			}
+			const char* resolvedLodName = ResolvePropLODName(lodName.c_str());
+			if (resolvedLodName != lodName.c_str()) {
+				lodName = resolvedLodName;
+			}
+
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", name.c_str());
-			const char* lodName = ResolvePropLODName(name.c_str());
-			LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName, FALSE);
+			LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
 			if (propROI) {
 				propROI->SetName(name.c_str());
 				createdROIs.push_back(propROI);

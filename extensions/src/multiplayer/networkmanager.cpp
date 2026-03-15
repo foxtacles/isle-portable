@@ -703,31 +703,31 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 	}
 
 	// TEST TRIGGER: When emote 0 (Wave) is triggered, play the first eligible
-	// NPC animation for the current actor instead of the emote.
-	if ((p_emoteId == 0 || p_emoteId == 1) && cam->IsActive() && cam->GetDisplayROI() && !m_npcAnimPlayer.IsPlaying()) {
-		LegoPathActor* userActor = UserActor();
-		if (userActor) {
-			uint8_t actorId = static_cast<LegoActor*>(userActor)->GetActorId();
-			auto eligible = m_npcAnimCatalog.GetEligibleAnimations(actorId);
-			if (!eligible.empty()) {
-				const Common::NpcAnimEntry* entry = eligible[p_emoteId];
-				SDL_Log(
-					"NPC Anim Test: Playing '%s' (objectId=%u) for actor %u",
-					entry->name,
-					entry->objectId,
-					actorId
-				);
-				cam->SetNpcAnimPlaying(true);
-				cam->SetNpcAnimStopCallback([this]() { m_npcAnimPlayer.Stop(); });
-				m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI());
+	// NPC animation for the current display actor instead of the emote.
+	if ((p_emoteId == 0 || p_emoteId == 1 || p_emoteId == 2) && cam->IsActive() && cam->GetDisplayROI() &&
+		!m_npcAnimPlayer.IsPlaying()) {
+		uint8_t displayActorIndex = cam->GetDisplayActorIndex();
+		auto eligible = m_npcAnimCatalog.GetEligibleNpcAnimations(displayActorIndex);
+		if (!eligible.empty()) {
+			size_t idx = SDL_min((size_t) p_emoteId, eligible.size() - 1);
+			const Common::NpcAnimEntry* entry = eligible[idx];
+			SDL_Log(
+				"NPC Anim Test: Playing '%s' (objectId=%u) for displayActor %u [%zu/%zu eligible]",
+				entry->name,
+				entry->objectId,
+				displayActorIndex,
+				idx + 1,
+				eligible.size()
+			);
+			cam->SetNpcAnimPlaying(true);
+			cam->SetNpcAnimStopCallback([this]() { m_npcAnimPlayer.Stop(); });
+			m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI());
 
-				// Broadcast zero speed while NPC anim is playing
-				EmoteMsg msg{};
-				msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
-				msg.emoteId = p_emoteId;
-				SendMessage(msg);
-				return;
-			}
+			EmoteMsg msg{};
+			msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+			msg.emoteId = p_emoteId;
+			SendMessage(msg);
+			return;
 		}
 	}
 
@@ -896,7 +896,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				it->second->GetCustomizeState(),
 				p_msg.changeType == CHANGE_MOOD
 			);
-			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote()) {
+			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote() && !m_npcAnimPlayer.IsPlaying()) {
 				it->second->StopClickAnimation();
 				MxU32 clickAnimId = Common::CharacterCustomizer::PlayClickAnimation(
 					it->second->GetROI(),
@@ -936,8 +936,9 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				p_msg.changeType == CHANGE_MOOD
 			);
 
-			// Only play click animation in 3rd person (not visible in 1st person or multi-part emote)
-			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote()) {
+			// Only play click animation in 3rd person (not during multi-part emote or NPC anim)
+			if (cam->GetDisplayROI() && !cam->IsInVehicle() && !cam->IsInMultiPartEmote() &&
+				!cam->IsNpcAnimPlaying()) {
 				cam->StopClickAnimation();
 				MxU32 clickAnimId =
 					Common::CharacterCustomizer::PlayClickAnimation(cam->GetDisplayROI(), cam->GetCustomizeState());
