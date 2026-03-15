@@ -7,6 +7,7 @@
 #include "misc/legotree.h"
 #include "roi/legoroi.h"
 
+#include <SDL3/SDL_log.h>
 #include <algorithm>
 #include <vector>
 
@@ -38,23 +39,33 @@ static void AssignROIIndices(
 				matchedROI = p_rootROI;
 				p_rootClaimed = true;
 			}
-			else if (*name == '*' && p_extraROICount > 0) {
-				// Subsequent *-prefixed node: search extra ROIs by stripped name.
-				// FindChildROI checks self first, then children recursively.
-				const char* stripped = name + 1;
+			else if (p_extraROICount > 0) {
+				const char* searchName = (*name == '*') ? name + 1 : name;
 				for (int e = 0; e < p_extraROICount; e++) {
-					matchedROI = p_extraROIs[e]->FindChildROI(stripped, p_extraROIs[e]);
+					SDL_Log(
+						"AssignROIIndices: searching extra[%d] name='%s' for searchName='%s'",
+						e,
+						p_extraROIs[e]->GetName(),
+						searchName
+					);
+					matchedROI = p_extraROIs[e]->FindChildROI(searchName, p_extraROIs[e]);
 					if (matchedROI != nullptr) {
+						SDL_Log("AssignROIIndices: MATCHED '%s' -> extra[%d] '%s'", searchName, e, matchedROI->GetName());
+						roi = matchedROI;
 						break;
 					}
 				}
+				if (!matchedROI) {
+					SDL_Log("AssignROIIndices: NO MATCH for root-level '%s' in %d extras", searchName, p_extraROICount);
+				}
+			}
+			else {
+				SDL_Log("AssignROIIndices: root claimed, no extras for '%s'", name);
 			}
 		}
 		else {
 			matchedROI = p_parentROI->FindChildROI(name, p_parentROI);
 			if (matchedROI == nullptr) {
-				// FindChildROI checks self first, so this handles both
-				// direct name matches and child searches on extra ROIs.
 				for (int e = 0; e < p_extraROICount; e++) {
 					matchedROI = p_extraROIs[e]->FindChildROI(name, p_extraROIs[e]);
 					if (matchedROI != nullptr) {

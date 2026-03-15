@@ -198,6 +198,17 @@ bool NetworkManager::WasDisconnected() const
 	return m_transport && m_transport->WasDisconnected();
 }
 
+void NetworkManager::StopNpcAnimation()
+{
+	if (m_npcAnimPlayer.IsPlaying()) {
+		m_npcAnimPlayer.Stop();
+		ThirdPersonCamera::Controller* cam = GetCamera();
+		if (cam) {
+			cam->SetNpcAnimPlaying(false);
+		}
+	}
+}
+
 void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 {
 	if (!p_world) {
@@ -347,13 +358,17 @@ void NetworkManager::ProcessPendingRequests()
 	// the request survives until the camera exists.
 	if (cam) {
 		if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
-			if (cam->IsEnabled()) {
+			if (cam->IsNpcAnimPlaying()) {
+				// Ignore toggle during NPC animation — complete no-op
+			}
+			else if (cam->IsEnabled()) {
 				cam->Disable();
+				NotifyThirdPersonChanged(false);
 			}
 			else {
 				cam->Enable();
+				NotifyThirdPersonChanged(true);
 			}
-			NotifyThirdPersonChanged(cam->IsEnabled());
 		}
 
 		int walkAnim = m_pendingWalkAnim.exchange(-1, std::memory_order_relaxed);
@@ -695,7 +710,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 			uint8_t actorId = static_cast<LegoActor*>(userActor)->GetActorId();
 			auto eligible = m_npcAnimCatalog.GetEligibleAnimations(actorId);
 			if (!eligible.empty()) {
-				const Common::NpcAnimEntry* entry = eligible[0];
+				const Common::NpcAnimEntry* entry = eligible[1];
 				SDL_Log(
 					"NPC Anim Test: Playing '%s' (objectId=%u) for actor %u",
 					entry->name,
@@ -703,6 +718,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 					actorId
 				);
 				cam->SetNpcAnimPlaying(true);
+				cam->SetNpcAnimStopCallback([this]() { m_npcAnimPlayer.Stop(); });
 				m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI());
 
 				// Broadcast zero speed while NPC anim is playing
@@ -847,15 +863,17 @@ void NetworkManager::SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType
 
 void NetworkManager::TickNpcAnim(float p_deltaTime)
 {
-	if (m_npcAnimPlayer.IsPlaying()) {
-		m_npcAnimPlayer.Tick(p_deltaTime);
+	if (!m_npcAnimPlayer.IsPlaying()) {
+		return;
+	}
 
-		if (!m_npcAnimPlayer.IsPlaying()) {
-			// Animation finished
-			ThirdPersonCamera::Controller* cam = GetCamera();
-			if (cam) {
-				cam->SetNpcAnimPlaying(false);
-			}
+	m_npcAnimPlayer.Tick(p_deltaTime);
+
+	if (!m_npcAnimPlayer.IsPlaying()) {
+		// Animation finished
+		ThirdPersonCamera::Controller* cam = GetCamera();
+		if (cam) {
+			cam->SetNpcAnimPlaying(false);
 		}
 	}
 }

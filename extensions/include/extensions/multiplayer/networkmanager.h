@@ -79,6 +79,10 @@ public:
 	bool IsClonedCharacter(const char* p_name) const;
 	void SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType, uint8_t p_partIndex);
 
+	// Stop any playing NPC animation and release its resources.
+	// Must be called before the display ROI is destroyed.
+	void StopNpcAnimation();
+
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
 	void OnBeforeSaveLoad();

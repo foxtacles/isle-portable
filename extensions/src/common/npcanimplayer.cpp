@@ -3,6 +3,7 @@
 #include "3dmanager/lego3dmanager.h"
 #include "anim/legoanim.h"
 #include "extensions/common/animutils.h"
+#include "extensions/common/charactercloner.h"
 #include "flic.h"
 #include "legocachsound.h"
 #include "legocharactermanager.h"
@@ -25,6 +26,25 @@
 #include <sitypes.h>
 
 using namespace Extensions::Common;
+
+// Maps animation tree node names to actual LOD names when they differ.
+// Must match the table in characteranimator.cpp.
+static const char* ResolvePropLODName(const char* p_nodeName)
+{
+	static const struct {
+		const char* nodePrefix;
+		const char* lodName;
+	} mappings[] = {
+		{"popmug", "pizpie"},
+	};
+
+	for (const auto& m : mappings) {
+		if (!SDL_strncasecmp(p_nodeName, m.nodePrefix, SDL_strlen(m.nodePrefix))) {
+			return m.lodName;
+		}
+	}
+	return p_nodeName;
+}
 
 // RIFF chunk IDs (matching libweaver sitypes.h)
 static const uint32_t RIFF_ID = 0x46464952;
@@ -123,9 +143,9 @@ NpcAnimPlayer::ObjectTree& NpcAnimPlayer::ObjectTree::operator=(ObjectTree&& p_o
 // --- NpcAnimPlayer ---
 
 NpcAnimPlayer::NpcAnimPlayer()
-	: m_siFile(nullptr), m_siReady(false), m_bufferSize(0), m_playing(false), m_startTime(0),
-	  m_currentData(nullptr), m_executingROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr),
-	  m_propCount(0)
+	: m_siFile(nullptr), m_siReady(false), m_bufferSize(0), m_playing(false), m_rebaseComputed(false),
+	  m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0),
+	  m_propROIs(nullptr), m_propCount(0), m_charCount(0)
 {
 }
 
@@ -242,6 +262,8 @@ si::Object* NpcAnimPlayer::ReadMxOb(si::File* p_file)
 	obj->extra_ = p_file->ReadBytes(extraSz);
 
 	// Types Presenter, World, Animation skip the filename/filetype fields
+	obj->filetype_ = static_cast<si::MxOb::FileType>(0);
+	obj->volume_ = 0;
 	if (obj->type_ != si::MxOb::Presenter && obj->type_ != si::MxOb::World &&
 		obj->type_ != si::MxOb::Animation) {
 		obj->filename_ = p_file->ReadString();
@@ -770,6 +792,26 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 	m_currentData = data;
 	m_executingROI = p_executingROI;
 
+	// Dump animation tree structure
+	{
+		std::function<void(LegoTreeNode*, int)> dumpNode = [&](LegoTreeNode* node, int depth) {
+			LegoAnimNodeData* nd = (LegoAnimNodeData*) node->GetData();
+			const char* name = nd ? nd->GetName() : "(null)";
+			char indent[64] = {};
+			for (int d = 0; d < depth && d < 30; d++) {
+				indent[d * 2] = ' ';
+				indent[d * 2 + 1] = ' ';
+			}
+			SDL_Log("NpcAnimPlayer: %s node '%s' children=%u", indent, name, node->GetNumChildren());
+			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
+				dumpNode(node->GetChild(i), depth + 1);
+			}
+		};
+		LegoTreeNode* root = data->anim->GetRoot();
+		SDL_Log("NpcAnimPlayer: Animation tree dump:");
+		dumpNode(root, 0);
+	}
+
 	// Build ROI map -- only the executing player's ROI.
 	// Target character's *-prefixed nodes get index 0 (NULL) -> transforms skipped.
 	AnimUtils::BuildROIMap(data->anim, p_executingROI, nullptr, 0, m_roiMap, m_roiMapSize);
@@ -781,19 +823,92 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 		return;
 	}
 
-	// Build props for unmatched animation nodes (filter out *-prefixed actor nodes)
-	std::vector<std::string> unmatchedNames;
-	AnimUtils::CollectUnmatchedNodes(data->anim, p_executingROI, unmatchedNames);
-
+	// Create ROIs for extra characters and props in the animation.
+	// The animation tree root has children like: -SBA002BU -> BU, RHODA, RD, BD, PG
+	// BU maps to the player ROI. The others need full character ROIs.
+	// Characters are compound objects (head+body+arms+legs) — CreateAutoROI
+	// won't work for them (it does LOD lookup, not actor lookup). We use
+	// CharacterCloner::Clone which builds the full compound ROI from actor info.
 	std::vector<LegoROI*> createdROIs;
-	for (const std::string& name : unmatchedNames) {
-		char uniqueName[64];
-		SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", name.c_str());
+	{
+		LegoTreeNode* animRoot = data->anim->GetRoot();
+		bool playerClaimed = false;
 
-		LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, name.c_str(), FALSE);
-		if (propROI) {
-			propROI->SetName(name.c_str());
-			createdROIs.push_back(propROI);
+		// Walk through the animation tree top-level to find character nodes.
+		// Skip '-' prefixed nodes (camera/tilt) and recurse into them.
+		std::function<void(LegoTreeNode*)> scanForCharacters = [&](LegoTreeNode* node) {
+			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
+				LegoTreeNode* child = node->GetChild(i);
+				LegoAnimNodeData* childData = (LegoAnimNodeData*) child->GetData();
+				const char* name = childData ? childData->GetName() : nullptr;
+				if (!name) {
+					continue;
+				}
+
+				if (*name == '-') {
+					// Camera/tilt node — recurse
+					scanForCharacters(child);
+					continue;
+				}
+
+				if (!playerClaimed) {
+					playerClaimed = true; // First character = player
+					continue;
+				}
+
+				// Extra character — use CharacterCloner to build full compound ROI
+				std::string lowered(name);
+				std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
+
+				if (!CharacterManager()->GetActorInfo(lowered.c_str())) {
+					SDL_Log("NpcAnimPlayer: '%s' is not a known actor, skipping", lowered.c_str());
+					continue;
+				}
+
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_char_%s", lowered.c_str());
+
+				LegoROI* charROI = CharacterCloner::Clone(CharacterManager(), uniqueName, lowered.c_str());
+				if (charROI) {
+					charROI->SetName(lowered.c_str());
+					VideoManager()->Get3DManager()->Add(*charROI);
+					createdROIs.push_back(charROI);
+					SDL_Log("NpcAnimPlayer: Created extra character '%s'", lowered.c_str());
+				}
+				else {
+					SDL_Log("NpcAnimPlayer: Failed to create character '%s'", lowered.c_str());
+				}
+			}
+		};
+		scanForCharacters(animRoot);
+
+		// Record how many are Clone'd characters (for correct cleanup)
+		m_charCount = (uint8_t) createdROIs.size();
+
+		// Also collect non-character unmatched nodes (props)
+		std::vector<std::string> unmatchedNames;
+		AnimUtils::CollectUnmatchedNodes(data->anim, p_executingROI, unmatchedNames);
+		for (const std::string& name : unmatchedNames) {
+			bool alreadyCreated = false;
+			for (auto* roi : createdROIs) {
+				if (!SDL_strcasecmp(roi->GetName(), name.c_str())) {
+					alreadyCreated = true;
+					break;
+				}
+			}
+			if (alreadyCreated) {
+				continue;
+			}
+
+			char uniqueName[64];
+			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", name.c_str());
+			const char* lodName = ResolvePropLODName(name.c_str());
+			LegoROI* propROI = CharacterManager()->CreateAutoROI(uniqueName, lodName, FALSE);
+			if (propROI) {
+				propROI->SetName(name.c_str());
+				createdROIs.push_back(propROI);
+				SDL_Log("NpcAnimPlayer: Created prop ROI '%s'", name.c_str());
+			}
 		}
 	}
 
@@ -804,7 +919,7 @@ void NpcAnimPlayer::Play(const NpcAnimEntry& p_entry, LegoROI* p_executingROI)
 			m_propROIs[i] = createdROIs[i];
 		}
 
-		// Rebuild ROI map with props
+		// Rebuild ROI map with extra ROIs
 		delete[] m_roiMap;
 		m_roiMap = nullptr;
 		m_roiMapSize = 0;
@@ -866,6 +981,11 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 		m_startTime = SDL_GetTicks();
 	}
 
+	// Ensure all mapped ROIs (including props) stay visible
+	if (m_roiMap) {
+		AnimUtils::EnsureROIMapVisibility(m_roiMap, m_roiMapSize);
+	}
+
 	// Use wall-clock time (SDL_GetTicks) instead of game timer
 	// (Timer()->GetTime()) because audio plays via miniaudio on
 	// a real-time audio thread. The game timer can stall during
@@ -878,67 +998,72 @@ void NpcAnimPlayer::Tick(float p_deltaTime)
 	}
 
 	// 1. Skeletal animation
-	// NPC animations have absolute world-space transforms. The tree is:
-	//   root -> -TILT (camera, roiIdx=0) -> character (roiIdx=N) -> body parts
-	// We rebase the character node's transform: compute the animation's
-	// position at time 0 as the origin, then for each frame apply only
-	// the *delta* from that origin, anchored to the player's saved position.
-	// This preserves relative movement (walk somewhere and back) while
-	// playing at the player's current location.
+	// Apply transforms to the entire tree from root, matching the original
+	// game's approach (LegoAnimPresenter::ApplyTransformWithVisibilityAndCam).
+	// The original passes m_transform as the initial matrix; we compute a
+	// rebase matrix that maps the animation's absolute world-space origin
+	// to the player's current position.
 	if (m_currentData->anim && m_roiMap) {
-		std::function<void(LegoTreeNode*, MxMatrix&)> findAndApply = [&](LegoTreeNode* node, MxMatrix& parentMat) {
-			LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
-			MxU32 roiIdx = data ? data->GetROIIndex() : 0;
-
-			if (roiIdx != 0 && m_roiMap[roiIdx] == m_executingROI) {
-				// This is the character node. Rebase its transform.
-				MxMatrix animLocalNow;
-				LegoROI::CreateLocalTransform(data, (LegoTime) elapsed, animLocalNow);
-
-				// Compute delta translation from animation start (time 0)
-				MxMatrix animLocalStart;
-				LegoROI::CreateLocalTransform(data, 0, animLocalStart);
-				float dx = animLocalNow[3][0] - animLocalStart[3][0];
-				float dy = animLocalNow[3][1] - animLocalStart[3][1];
-				float dz = animLocalNow[3][2] - animLocalStart[3][2];
-
-				// Build rebased character transform: player position + delta movement
-				MxMatrix rebasedTransform(m_savedTransform);
-				rebasedTransform[3][0] += dx;
-				rebasedTransform[3][1] += dy;
-				rebasedTransform[3][2] += dz;
-
-				// Set character ROI to rebased transform
-				m_executingROI->WrappedSetLocal2WorldWithWorldDataUpdate(rebasedTransform);
-
-				// Apply body-part children with rebased transform as parent
-				for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
-					LegoROI::ApplyAnimationTransformation(
-						node->GetChild(i),
-						rebasedTransform,
-						(LegoTime) elapsed,
-						m_roiMap
-					);
+		// Compute the rebase transform once: the full rotation+translation delta
+		// between the animation's designed player pose (at time 0) and the
+		// player's actual pose. This delta is applied as a parent transform to
+		// the entire animation tree, preserving all relative motion (turns,
+		// walks, extra actor positions) while anchoring everything to the
+		// player's current position and facing direction.
+		//
+		// Math: rebaseMatrix = savedTransform * inverse(animPose0)
+		// So: world = rebaseMatrix * animPose(t) = savedTransform * inverse(animPose0) * animPose(t)
+		// At t=0 this gives savedTransform (player stays put).
+		// At t>0 the delta animPose0->animPose(t) is applied in the player's frame.
+		if (!m_rebaseComputed) {
+			std::function<bool(LegoTreeNode*)> findOrigin = [&](LegoTreeNode* node) -> bool {
+				LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
+				MxU32 roiIdx = data ? data->GetROIIndex() : 0;
+				if (roiIdx != 0 && m_roiMap[roiIdx] == m_executingROI) {
+					LegoROI::CreateLocalTransform(data, 0, m_animPose0);
+					return true;
 				}
-				return;
+				for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
+					if (findOrigin(node->GetChild(i))) {
+						return true;
+					}
+				}
+				return false;
+			};
+			findOrigin(m_currentData->anim->GetRoot());
+
+			// Compute inverse of animPose0 (rigid body: transpose rotation, negate translated position)
+			MxMatrix invAnimPose0;
+			invAnimPose0.SetIdentity();
+			// Transpose the 3x3 rotation
+			for (int r = 0; r < 3; r++) {
+				for (int c = 0; c < 3; c++) {
+					invAnimPose0[r][c] = m_animPose0[c][r];
+				}
+			}
+			// Translation: -R^T * t
+			for (int r = 0; r < 3; r++) {
+				invAnimPose0[3][r] = -(invAnimPose0[0][r] * m_animPose0[3][0] +
+									   invAnimPose0[1][r] * m_animPose0[3][1] +
+									   invAnimPose0[2][r] * m_animPose0[3][2]);
 			}
 
-			// Not the character node — compute this node's transform and recurse
-			MxMatrix localMat;
-			LegoROI::CreateLocalTransform(data, (LegoTime) elapsed, localMat);
-			MxMatrix worldMat;
-			worldMat.Product(localMat, parentMat);
+			// rebaseMatrix = savedTransform * inverse(animPose0)
+			m_rebaseMatrix.Product(invAnimPose0, m_savedTransform);
+			m_rebaseComputed = true;
+		}
 
-			for (LegoU32 i = 0; i < node->GetNumChildren(); i++) {
-				findAndApply(node->GetChild(i), worldMat);
-			}
-		};
-
-		MxMatrix identity;
-		identity.SetIdentity();
+		// Apply the entire animation tree with the rebase matrix.
+		// This correctly transforms all characters and props from animation
+		// world-space to the player's local frame.
 		LegoTreeNode* root = m_currentData->anim->GetRoot();
 		for (LegoU32 i = 0; i < root->GetNumChildren(); i++) {
-			findAndApply(root->GetChild(i), identity);
+			LegoROI::ApplyAnimationTransformation(
+				root->GetChild(i),
+				m_rebaseMatrix,
+				(LegoTime) elapsed,
+				m_roiMap
+			);
 		}
 	}
 
@@ -978,6 +1103,7 @@ void NpcAnimPlayer::Stop()
 	}
 
 	m_playing = false;
+	m_rebaseComputed = false;
 	m_currentData = nullptr;
 	m_executingROI = nullptr;
 	m_startTime = 0;
@@ -1149,12 +1275,20 @@ void NpcAnimPlayer::CleanupProps()
 	for (uint8_t i = 0; i < m_propCount; i++) {
 		if (m_propROIs[i]) {
 			VideoManager()->Get3DManager()->Remove(*m_propROIs[i]);
-			CharacterManager()->ReleaseAutoROI(m_propROIs[i]);
+			if (i < m_charCount) {
+				// Clone'd character — release via character manager
+				CharacterManager()->ReleaseActor(m_propROIs[i]);
+			}
+			else {
+				// Auto ROI prop
+				CharacterManager()->ReleaseAutoROI(m_propROIs[i]);
+			}
 		}
 	}
 	delete[] m_propROIs;
 	m_propROIs = nullptr;
 	m_propCount = 0;
+	m_charCount = 0;
 }
 
 void NpcAnimPlayer::CleanupSounds()

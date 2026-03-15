@@ -119,7 +119,7 @@ void ThirdPersonCameraExt::OnSDLEvent(SDL_Event* p_event)
 
 	s_camera->HandleSDLEventImpl(p_event);
 
-	if (s_camera->ConsumeAutoDisable()) {
+	if (s_camera->ConsumeAutoDisable() && !s_camera->IsNpcAnimPlaying()) {
 		s_camera->Disable(/*p_preserveTouch=*/true);
 	}
 	else if (s_camera->ConsumeAutoEnable()) {

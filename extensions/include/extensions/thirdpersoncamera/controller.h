@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <cstdint>
+#include <functional>
 
 class IslePathActor;
 class LegoNavController;
@@ -59,6 +60,7 @@ public:
 
 	void SetNpcAnimPlaying(bool p_playing) { m_npcAnimPlaying = p_playing; }
 	bool IsNpcAnimPlaying() const { return m_npcAnimPlaying; }
+	void SetNpcAnimStopCallback(std::function<void()> p_callback) { m_npcAnimStopCallback = p_callback; }
 
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
@@ -110,6 +112,7 @@ private:
 	bool m_active;
 	bool m_pendingWorldTransition;
 	bool m_npcAnimPlaying;
+	std::function<void()> m_npcAnimStopCallback;
 	LegoROI* m_playerROI;
 };
 

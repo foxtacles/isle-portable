@@ -51,6 +51,13 @@ void Controller::Disable(bool p_preserveTouch)
 
 void Controller::Deactivate()
 {
+	// Notify the NPC animation callback before destroying the display ROI.
+	// NpcAnimPlayer holds a reference to the ROI and has prop ROIs in the scene.
+	if (m_npcAnimPlaying && m_npcAnimStopCallback) {
+		m_npcAnimStopCallback();
+		m_npcAnimPlaying = false;
+	}
+
 	if (m_active && m_playerROI) {
 		m_playerROI->SetVisibility(FALSE);
 		VideoManager()->Get3DManager()->Remove(*m_playerROI);
@@ -339,6 +346,13 @@ void Controller::OnWorldDisabled(LegoWorld* p_world)
 	if (!p_world) {
 		return;
 	}
+
+	// Stop NPC animation before destroying the display ROI
+	if (m_npcAnimPlaying && m_npcAnimStopCallback) {
+		m_npcAnimStopCallback();
+		m_npcAnimPlaying = false;
+	}
+
 	m_active = false;
 	m_pendingWorldTransition = false;
 	m_playerROI = nullptr;
@@ -365,7 +379,7 @@ MxBool Controller::HandleCameraRelativeMovement(
 		p_newPos,
 		p_newDir,
 		p_deltaTime,
-		m_animator.IsInMultiPartEmote()
+		m_animator.IsInMultiPartEmote() || m_npcAnimPlaying
 	);
 }
 

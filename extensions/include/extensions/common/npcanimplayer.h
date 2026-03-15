@@ -127,18 +127,24 @@ private:
 
 	// Playback state
 	bool m_playing;
+	bool m_rebaseComputed;
 	uint64_t m_startTime; // SDL_GetTicks() at first Tick() — wall-clock to match miniaudio
 	NpcAnimData* m_currentData;
 	LegoROI* m_executingROI;
 	MxMatrix m_savedTransform;
+	MxMatrix m_animPose0;    // Player character's animation transform at time 0
+	MxMatrix m_rebaseMatrix; // Transform from animation world-space to player's local frame
 
 	// ROI map for skeletal animation
 	LegoROI** m_roiMap;
 	MxU32 m_roiMapSize;
 
-	// Props created for unmatched animation nodes
+	// Extra ROIs created for the animation (characters + props).
+	// Characters are created via CharacterCloner::Clone (released with ReleaseActor).
+	// Props are created via CreateAutoROI (released with ReleaseAutoROI).
 	LegoROI** m_propROIs;
 	uint8_t m_propCount;
+	uint8_t m_charCount; // First m_charCount entries are Clone'd characters
 
 	// Audio playback
 	struct ActiveSound {
