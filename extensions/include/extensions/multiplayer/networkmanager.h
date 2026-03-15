@@ -153,6 +153,7 @@ private:
 	bool m_disableAllNPCs;
 	bool m_showNameBubbles;
 	bool m_lastCameraEnabled;
+	bool m_wasInRestrictedArea;
 
 	// NPC animation playback
 	Extensions::Common::NpcAnimCatalog m_npcAnimCatalog;
