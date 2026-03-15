@@ -534,7 +534,7 @@ if (ISLE_EXTENSIONS)
     extensions/src/textureloader.cpp
 
     # Common shared code
-    extensions/src/common/animdata.cpp
+    extensions/src/common/charactertables.cpp
     extensions/src/common/animutils.cpp
     extensions/src/common/characteranimator.cpp
     extensions/src/common/charactercloner.cpp
@@ -552,7 +552,7 @@ if (ISLE_EXTENSIONS)
     # Multiplayer extension
     extensions/src/multiplayer/animation/catalog.cpp
     extensions/src/multiplayer/animation/loader.cpp
-    extensions/src/multiplayer/animation/controller.cpp
+    extensions/src/multiplayer/animation/sceneplayer.cpp
     extensions/src/multiplayer/animation/audioplayer.cpp
     extensions/src/multiplayer/animation/phonemeplayer.cpp
     extensions/src/multiplayer.cpp

@@ -12,7 +12,7 @@
 
 using namespace Multiplayer::Animation;
 
-void PhonemePlayer::Init(const std::vector<AnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI)
+void PhonemePlayer::Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI)
 {
 	for (auto& track : p_tracks) {
 		PhonemeState state;
@@ -56,7 +56,7 @@ void PhonemePlayer::Init(const std::vector<AnimData::PhonemeTrack>& p_tracks, Le
 	}
 }
 
-void PhonemePlayer::Tick(float p_elapsedMs, const std::vector<AnimData::PhonemeTrack>& p_tracks)
+void PhonemePlayer::Tick(float p_elapsedMs, const std::vector<SceneAnimData::PhonemeTrack>& p_tracks)
 {
 	for (size_t i = 0; i < p_tracks.size() && i < m_states.size(); i++) {
 		auto& track = p_tracks[i];

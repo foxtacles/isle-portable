@@ -1,4 +1,4 @@
-#include "extensions/multiplayer/animation/controller.h"
+#include "extensions/multiplayer/animation/sceneplayer.h"
 
 #include "3dmanager/lego3dmanager.h"
 #include "anim/legoanim.h"
@@ -21,37 +21,20 @@ using namespace Multiplayer::Animation;
 namespace AnimUtils = Extensions::Common::AnimUtils;
 using Extensions::Common::CharacterCloner;
 
-// Strip trailing digits and underscores from a name to get the LOD base name.
-// Mirrors the digit-trimming in LegoAnimPresenter::CreateManagedActors/CreateSceneROIs.
-static std::string TrimLODSuffix(const std::string& p_name)
-{
-	std::string result(p_name);
-	while (result.size() > 1) {
-		char c = result.back();
-		if ((c >= '0' && c <= '9') || c == '_') {
-			result.pop_back();
-		}
-		else {
-			break;
-		}
-	}
-	return result;
-}
-
-Controller::Controller()
+ScenePlayer::ScenePlayer()
 	: m_playing(false), m_rebaseComputed(false), m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr),
 	  m_vehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr), m_propCount(0)
 {
 }
 
-Controller::~Controller()
+ScenePlayer::~ScenePlayer()
 {
 	if (m_playing) {
 		Stop();
 	}
 }
 
-void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoROI* p_vehicleROI)
+void ScenePlayer::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoROI* p_vehicleROI)
 {
 	// Determine the player character's 2-letter prefix for matching.
 	// The last 2 chars of the animation name encode the character
@@ -104,7 +87,7 @@ void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executin
 			// Prop with digit-trimmed LOD name (matches original exactly)
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-			roi = CharacterManager()->CreateAutoROI(uniqueName, TrimLODSuffix(lowered).c_str(), FALSE);
+			roi = CharacterManager()->CreateAutoROI(uniqueName, AnimUtils::TrimLODSuffix(lowered).c_str(), FALSE);
 			if (roi) {
 				roi->SetName(lowered.c_str());
 			}
@@ -124,7 +107,7 @@ void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executin
 			// ROI, reuse it (the actor is likely the player's vehicle).
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-			roi = CharacterManager()->CreateAutoROI(uniqueName, TrimLODSuffix(lowered).c_str(), FALSE);
+			roi = CharacterManager()->CreateAutoROI(uniqueName, AnimUtils::TrimLODSuffix(lowered).c_str(), FALSE);
 			if (roi) {
 				roi->SetName(lowered.c_str());
 			}
@@ -157,7 +140,7 @@ void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executin
 	}
 }
 
-void Controller::Play(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoROI* p_vehicleROI)
+void ScenePlayer::Play(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoROI* p_vehicleROI)
 {
 	if (m_playing) {
 		Stop();
@@ -167,7 +150,7 @@ void Controller::Play(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoR
 		return;
 	}
 
-	AnimData* data = m_loader.EnsureCached(p_animInfo->m_objectId);
+	SceneAnimData* data = m_loader.EnsureCached(p_animInfo->m_objectId);
 	if (!data || !data->anim) {
 		return;
 	}
@@ -204,7 +187,7 @@ void Controller::Play(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoR
 	m_playing = true;
 }
 
-void Controller::ComputeRebaseMatrix()
+void ScenePlayer::ComputeRebaseMatrix()
 {
 	// Find the player character node and compute its WORLD transform
 	// at time 0 by accumulating parent transforms (handles nested
@@ -255,7 +238,7 @@ void Controller::ComputeRebaseMatrix()
 	m_rebaseComputed = true;
 }
 
-void Controller::Tick(float p_deltaTime)
+void ScenePlayer::Tick(float p_deltaTime)
 {
 	if (!m_playing || !m_currentData || !m_executingROI) {
 		return;
@@ -303,10 +286,7 @@ void Controller::Tick(float p_deltaTime)
 		// Apply the entire animation tree with the rebase matrix.
 		// This correctly transforms all characters and props from animation
 		// world-space to the player's local frame.
-		LegoTreeNode* root = m_currentData->anim->GetRoot();
-		for (LegoU32 i = 0; i < root->GetNumChildren(); i++) {
-			LegoROI::ApplyAnimationTransformation(root->GetChild(i), m_rebaseMatrix, (LegoTime) elapsed, m_roiMap);
-		}
+		AnimUtils::ApplyTree(m_currentData->anim, m_rebaseMatrix, (LegoTime) elapsed, m_roiMap);
 	}
 
 	// 2. Audio
@@ -316,7 +296,7 @@ void Controller::Tick(float p_deltaTime)
 	m_phonemePlayer.Tick(elapsed, m_currentData->phonemeTracks);
 }
 
-void Controller::Stop()
+void ScenePlayer::Stop()
 {
 	if (!m_playing) {
 		return;
@@ -342,7 +322,7 @@ void Controller::Stop()
 	m_startTime = 0;
 }
 
-void Controller::CleanupProps()
+void ScenePlayer::CleanupProps()
 {
 	for (uint8_t i = 0; i < m_propCount; i++) {
 		if (m_propROIs[i]) {
@@ -365,7 +345,7 @@ void Controller::CleanupProps()
 	m_propCount = 0;
 }
 
-void Controller::RestoreVehicleROI()
+void ScenePlayer::RestoreVehicleROI()
 {
 	if (m_vehicleROI && !m_savedVehicleName.empty()) {
 		m_vehicleROI->SetName(m_savedVehicleName.c_str());

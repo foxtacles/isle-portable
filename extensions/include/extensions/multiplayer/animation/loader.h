@@ -21,7 +21,7 @@ namespace Multiplayer::Animation
 {
 
 // Extracted animation data from ISLE.SI
-struct AnimData {
+struct SceneAnimData {
 	LegoAnim* anim;
 	float duration;
 	float boundingRadius;
@@ -46,13 +46,13 @@ struct AnimData {
 	};
 	std::vector<PhonemeTrack> phonemeTracks;
 
-	AnimData();
-	~AnimData();
+	SceneAnimData();
+	~SceneAnimData();
 
-	AnimData(const AnimData&) = delete;
-	AnimData& operator=(const AnimData&) = delete;
-	AnimData(AnimData&& p_other) noexcept;
-	AnimData& operator=(AnimData&& p_other) noexcept;
+	SceneAnimData(const SceneAnimData&) = delete;
+	SceneAnimData& operator=(const SceneAnimData&) = delete;
+	SceneAnimData(SceneAnimData&& p_other) noexcept;
+	SceneAnimData& operator=(SceneAnimData&& p_other) noexcept;
 
 private:
 	void ReleaseTracks();
@@ -76,18 +76,18 @@ public:
 	bool OpenSI();
 
 	// Animation data extraction and caching
-	AnimData* EnsureCached(uint32_t p_objectId);
+	SceneAnimData* EnsureCached(uint32_t p_objectId);
 
 private:
 	bool ReadObject(uint32_t p_objectId);
-	bool ParseAnimationChild(si::Object* p_child, AnimData& p_data);
-	bool ParseSoundChild(si::Object* p_child, AnimData& p_data);
-	bool ParsePhonemeChild(si::Object* p_child, AnimData& p_data);
+	bool ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data);
+	bool ParseSoundChild(si::Object* p_child, SceneAnimData& p_data);
+	bool ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data);
 
 	si::File* m_siFile;
 	si::Interleaf* m_interleaf;
 	bool m_siReady;
-	std::map<uint32_t, AnimData> m_cache;
+	std::map<uint32_t, SceneAnimData> m_cache;
 };
 
 } // namespace Multiplayer::Animation

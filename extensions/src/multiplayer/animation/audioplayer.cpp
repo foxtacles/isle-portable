@@ -5,7 +5,7 @@
 
 using namespace Multiplayer::Animation;
 
-void AudioPlayer::Init(const std::vector<AnimData::AudioTrack>& p_tracks)
+void AudioPlayer::Init(const std::vector<SceneAnimData::AudioTrack>& p_tracks)
 {
 	for (const auto& audioTrack : p_tracks) {
 		LegoCacheSound* sound = new LegoCacheSound();

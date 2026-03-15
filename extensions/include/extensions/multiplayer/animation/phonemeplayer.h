@@ -21,8 +21,8 @@ struct PhonemeState {
 
 class PhonemePlayer {
 public:
-	void Init(const std::vector<AnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI);
-	void Tick(float p_elapsedMs, const std::vector<AnimData::PhonemeTrack>& p_tracks);
+	void Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI);
+	void Tick(float p_elapsedMs, const std::vector<SceneAnimData::PhonemeTrack>& p_tracks);
 	void Cleanup(LegoROI* p_executingROI);
 
 private:

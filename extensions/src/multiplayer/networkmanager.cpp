@@ -1,8 +1,8 @@
 #include "extensions/multiplayer/networkmanager.h"
 
-#include "extensions/common/animdata.h"
 #include "extensions/common/arearestriction.h"
 #include "extensions/common/charactercustomizer.h"
+#include "extensions/common/charactertables.h"
 #include "extensions/multiplayer/namebubblerenderer.h"
 #include "extensions/thirdpersoncamera.h"
 #include "extensions/thirdpersoncamera/controller.h"
@@ -198,8 +198,8 @@ bool NetworkManager::WasDisconnected() const
 
 void NetworkManager::StopAnimation()
 {
-	if (m_animController.IsPlaying()) {
-		m_animController.Stop();
+	if (m_scenePlayer.IsPlaying()) {
+		m_scenePlayer.Stop();
 		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
 			cam->SetAnimPlaying(false);
@@ -704,7 +704,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 	// TEST TRIGGER: When emote 0-2 is triggered, play the first eligible
 	// animation for the current display actor instead of the emote.
 	if ((p_emoteId == 0 || p_emoteId == 1 || p_emoteId == 2) && cam->IsActive() && cam->GetDisplayROI() &&
-		!m_animController.IsPlaying()) {
+		!m_scenePlayer.IsPlaying()) {
 		uint8_t displayActorIndex = cam->GetDisplayActorIndex();
 		auto eligible = m_animCatalog.GetEligibleNpcAnimations(displayActorIndex);
 		if (!eligible.empty()) {
@@ -712,8 +712,8 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 			const Animation::CatalogEntry* entry = eligible[idx];
 			const AnimInfo* animInfo = m_animCatalog.GetAnimInfo(entry->animIndex);
 
-			cam->SetAnimPlaying(true, [this]() { m_animController.Stop(); });
-			m_animController.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
+			cam->SetAnimPlaying(true, [this]() { m_scenePlayer.Stop(); });
+			m_scenePlayer.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
 
 			EmoteMsg msg{};
 			msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
@@ -855,13 +855,13 @@ void NetworkManager::SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType
 
 void NetworkManager::TickAnimation(float p_deltaTime)
 {
-	if (!m_animController.IsPlaying()) {
+	if (!m_scenePlayer.IsPlaying()) {
 		return;
 	}
 
-	m_animController.Tick(p_deltaTime);
+	m_scenePlayer.Tick(p_deltaTime);
 
-	if (!m_animController.IsPlaying()) {
+	if (!m_scenePlayer.IsPlaying()) {
 		// Animation finished
 		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
@@ -888,7 +888,7 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				it->second->GetCustomizeState(),
 				p_msg.changeType == CHANGE_MOOD
 			);
-			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote() && !m_animController.IsPlaying()) {
+			if (!it->second->IsMoving() && !it->second->IsInMultiPartEmote() && !m_scenePlayer.IsPlaying()) {
 				it->second->StopClickAnimation();
 				MxU32 clickAnimId = Common::CharacterCustomizer::PlayClickAnimation(
 					it->second->GetROI(),

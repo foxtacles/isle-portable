@@ -80,6 +80,16 @@ inline void EnsureROIMapVisibility(LegoROI** p_roiMap, MxU32 p_roiMapSize)
 	}
 }
 
+// Apply animation transformation to all root children of an animation tree.
+void ApplyTree(LegoAnim* p_anim, MxMatrix& p_transform, LegoTime p_time, LegoROI** p_roiMap);
+
+// Strip trailing digits and underscores from a name to get the LOD base name.
+// Mirrors the digit-trimming in LegoAnimPresenter::CreateManagedActors/CreateSceneROIs.
+std::string TrimLODSuffix(const std::string& p_name);
+
+// Maps animation tree node names to actual LOD names when they differ.
+const char* ResolvePropLODName(const char* p_nodeName);
+
 // Flip a matrix from forward-z to backward-z (or vice versa) in place.
 inline void FlipMatrixDirection(MxMatrix& p_mat)
 {

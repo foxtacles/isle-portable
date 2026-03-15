@@ -15,10 +15,10 @@ struct AnimInfo;
 namespace Multiplayer::Animation
 {
 
-class Controller {
+class ScenePlayer {
 public:
-	Controller();
-	~Controller();
+	ScenePlayer();
+	~ScenePlayer();
 
 	void Play(const AnimInfo* p_animInfo, LegoROI* p_executingROI, LegoROI* p_vehicleROI = nullptr);
 	void Tick(float p_deltaTime);
@@ -40,7 +40,7 @@ private:
 	bool m_playing;
 	bool m_rebaseComputed;
 	uint64_t m_startTime;
-	AnimData* m_currentData;
+	SceneAnimData* m_currentData;
 	LegoROI* m_executingROI;
 	MxMatrix m_savedTransform;
 	MxMatrix m_animPose0;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "extensions/multiplayer/animation/catalog.h"
-#include "extensions/multiplayer/animation/controller.h"
+#include "extensions/multiplayer/animation/sceneplayer.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -157,7 +157,7 @@ private:
 
 	// NPC animation playback
 	Multiplayer::Animation::Catalog m_animCatalog;
-	Multiplayer::Animation::Controller m_animController;
+	Multiplayer::Animation::ScenePlayer m_scenePlayer;
 
 	void TickAnimation(float p_deltaTime);
 

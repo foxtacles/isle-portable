@@ -1,11 +1,10 @@
 #include "extensions/multiplayer/animation/loader.h"
 
+#include "anim/legoanim.h"
 #include "extensions/common/pathutils.h"
 #include "flic.h"
 #include "misc/legostorage.h"
 #include "mxwavepresenter.h"
-
-#include "anim/legoanim.h"
 
 #include <SDL3/SDL_stdinc.h>
 #include <file.h>
@@ -13,20 +12,18 @@
 
 using namespace Multiplayer::Animation;
 
-// --- AnimData ---
-
-AnimData::AnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f)
+SceneAnimData::SceneAnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f)
 {
 	centerPoint[0] = centerPoint[1] = centerPoint[2] = 0.0f;
 }
 
-AnimData::~AnimData()
+SceneAnimData::~SceneAnimData()
 {
 	delete anim;
 	ReleaseTracks();
 }
 
-void AnimData::ReleaseTracks()
+void SceneAnimData::ReleaseTracks()
 {
 	for (auto& track : audioTracks) {
 		delete[] track.pcmData;
@@ -37,7 +34,7 @@ void AnimData::ReleaseTracks()
 	}
 }
 
-AnimData::AnimData(AnimData&& p_other) noexcept
+SceneAnimData::SceneAnimData(SceneAnimData&& p_other) noexcept
 	: anim(p_other.anim), duration(p_other.duration), boundingRadius(p_other.boundingRadius),
 	  audioTracks(std::move(p_other.audioTracks)), phonemeTracks(std::move(p_other.phonemeTracks))
 {
@@ -47,7 +44,7 @@ AnimData::AnimData(AnimData&& p_other) noexcept
 	p_other.anim = nullptr;
 }
 
-AnimData& AnimData::operator=(AnimData&& p_other) noexcept
+SceneAnimData& SceneAnimData::operator=(SceneAnimData&& p_other) noexcept
 {
 	if (this != &p_other) {
 		delete anim;
@@ -65,8 +62,6 @@ AnimData& AnimData::operator=(AnimData&& p_other) noexcept
 	}
 	return *this;
 }
-
-// --- Loader ---
 
 Loader::Loader() : m_siFile(nullptr), m_interleaf(nullptr), m_siReady(false)
 {
@@ -128,7 +123,7 @@ bool Loader::ReadObject(uint32_t p_objectId)
 	return m_interleaf->ReadObject(m_siFile, p_objectId) == si::Interleaf::ERROR_SUCCESS;
 }
 
-bool Loader::ParseAnimationChild(si::Object* p_child, AnimData& p_data)
+bool Loader::ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data)
 {
 	auto& chunks = p_child->data_;
 	if (chunks.empty()) {
@@ -181,7 +176,7 @@ bool Loader::ParseAnimationChild(si::Object* p_child, AnimData& p_data)
 	return true;
 }
 
-bool Loader::ParseSoundChild(si::Object* p_child, AnimData& p_data)
+bool Loader::ParseSoundChild(si::Object* p_child, SceneAnimData& p_data)
 {
 	auto& chunks = p_child->data_;
 	if (chunks.size() < 2) {
@@ -198,7 +193,7 @@ bool Loader::ParseSoundChild(si::Object* p_child, AnimData& p_data)
 		return false;
 	}
 
-	AnimData::AudioTrack track;
+	SceneAnimData::AudioTrack track;
 	SDL_memcpy(&track.format, header.data(), sizeof(MxWavePresenter::WaveFormat));
 	track.pcmData = nullptr;
 	track.pcmDataSize = 0;
@@ -229,14 +224,14 @@ bool Loader::ParseSoundChild(si::Object* p_child, AnimData& p_data)
 	return true;
 }
 
-bool Loader::ParsePhonemeChild(si::Object* p_child, AnimData& p_data)
+bool Loader::ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data)
 {
 	auto& chunks = p_child->data_;
 	if (chunks.size() < 2) {
 		return false;
 	}
 
-	AnimData::PhonemeTrack track;
+	SceneAnimData::PhonemeTrack track;
 
 	// data_[0] = FLIC_HEADER
 	const auto& headerChunk = chunks[0];
@@ -270,7 +265,7 @@ bool Loader::ParsePhonemeChild(si::Object* p_child, AnimData& p_data)
 	return true;
 }
 
-AnimData* Loader::EnsureCached(uint32_t p_objectId)
+SceneAnimData* Loader::EnsureCached(uint32_t p_objectId)
 {
 	auto it = m_cache.find(p_objectId);
 	if (it != m_cache.end()) {
@@ -287,7 +282,7 @@ AnimData* Loader::EnsureCached(uint32_t p_objectId)
 
 	si::Object* composite = static_cast<si::Object*>(m_interleaf->GetChildAt(p_objectId));
 
-	AnimData data;
+	SceneAnimData data;
 	bool hasAnim = false;
 
 	for (size_t i = 0; i < composite->GetChildCount(); i++) {

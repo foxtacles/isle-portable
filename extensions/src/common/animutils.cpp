@@ -7,6 +7,7 @@
 #include "misc/legotree.h"
 #include "roi/legoroi.h"
 
+#include <SDL3/SDL_stdinc.h>
 #include <algorithm>
 #include <vector>
 
@@ -236,4 +237,44 @@ void AnimUtils::CollectUnmatchedNodes(LegoAnim* p_anim, LegoROI* p_rootROI, std:
 
 	bool rootClaimed = false;
 	CollectUnmatchedNodesRecursive(root, nullptr, p_rootROI, p_unmatchedNames, rootClaimed);
+}
+
+void AnimUtils::ApplyTree(LegoAnim* p_anim, MxMatrix& p_transform, LegoTime p_time, LegoROI** p_roiMap)
+{
+	LegoTreeNode* root = p_anim->GetRoot();
+	for (LegoU32 i = 0; i < root->GetNumChildren(); i++) {
+		LegoROI::ApplyAnimationTransformation(root->GetChild(i), p_transform, p_time, p_roiMap);
+	}
+}
+
+std::string AnimUtils::TrimLODSuffix(const std::string& p_name)
+{
+	std::string result(p_name);
+	while (result.size() > 1) {
+		char c = result.back();
+		if ((c >= '0' && c <= '9') || c == '_') {
+			result.pop_back();
+		}
+		else {
+			break;
+		}
+	}
+	return result;
+}
+
+const char* AnimUtils::ResolvePropLODName(const char* p_nodeName)
+{
+	static const struct {
+		const char* nodePrefix;
+		const char* lodName;
+	} mappings[] = {
+		{"popmug", "pizpie"},
+	};
+
+	for (const auto& m : mappings) {
+		if (!SDL_strncasecmp(p_nodeName, m.nodePrefix, SDL_strlen(m.nodePrefix))) {
+			return m.lodName;
+		}
+	}
+	return p_nodeName;
 }
