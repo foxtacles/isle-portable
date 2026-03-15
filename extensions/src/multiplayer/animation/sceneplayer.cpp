@@ -331,13 +331,10 @@ void ScenePlayer::CleanupProps()
 				continue;
 			}
 
-			VideoManager()->Get3DManager()->Remove(*m_propROIs[i]);
-			if (CharacterManager()->GetRefCount(m_propROIs[i]) > 0) {
-				CharacterManager()->ReleaseActor(m_propROIs[i]);
-			}
-			else {
-				CharacterManager()->ReleaseAutoROI(m_propROIs[i]);
-			}
+			// Use ReleaseAutoROI (not ReleaseActor) because these are
+			// independent clones that must not touch g_actorInfo[].
+			// ReleaseAutoROI handles Remove from 3DManager internally.
+			CharacterManager()->ReleaseAutoROI(m_propROIs[i]);
 		}
 	}
 	delete[] m_propROIs;
