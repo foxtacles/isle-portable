@@ -53,6 +53,9 @@ struct AnimData {
 	AnimData& operator=(const AnimData&) = delete;
 	AnimData(AnimData&& p_other) noexcept;
 	AnimData& operator=(AnimData&& p_other) noexcept;
+
+private:
+	void ReleaseTracks();
 };
 
 // Owns the SI file handle, reads objects on demand, parses animation/sound/phoneme

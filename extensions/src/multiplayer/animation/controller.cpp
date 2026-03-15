@@ -21,6 +21,23 @@ using namespace Multiplayer::Animation;
 namespace AnimUtils = Extensions::Common::AnimUtils;
 using Extensions::Common::CharacterCloner;
 
+// Strip trailing digits and underscores from a name to get the LOD base name.
+// Mirrors the digit-trimming in LegoAnimPresenter::CreateManagedActors/CreateSceneROIs.
+static std::string TrimLODSuffix(const std::string& p_name)
+{
+	std::string result(p_name);
+	while (result.size() > 1) {
+		char c = result.back();
+		if ((c >= '0' && c <= '9') || c == '_') {
+			result.pop_back();
+		}
+		else {
+			break;
+		}
+	}
+	return result;
+}
+
 Controller::Controller()
 	: m_playing(false), m_rebaseComputed(false), m_startTime(0), m_currentData(nullptr), m_executingROI(nullptr),
 	  m_vehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr), m_propCount(0)
@@ -85,20 +102,9 @@ void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executin
 		}
 		else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed || actorType == LegoAnimActorEntry::e_sceneRoi1 || actorType == LegoAnimActorEntry::e_sceneRoi2) {
 			// Prop with digit-trimmed LOD name (matches original exactly)
-			std::string lodName(lowered);
-			while (lodName.size() > 1) {
-				char c = lodName.back();
-				if ((c >= '0' && c <= '9') || c == '_') {
-					lodName.pop_back();
-				}
-				else {
-					break;
-				}
-			}
-
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-			roi = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
+			roi = CharacterManager()->CreateAutoROI(uniqueName, TrimLODSuffix(lowered).c_str(), FALSE);
 			if (roi) {
 				roi->SetName(lowered.c_str());
 			}
@@ -116,20 +122,9 @@ void Controller::CreateExtraROIs(const AnimInfo* p_animInfo, LegoROI* p_executin
 			// Type 0/1: "scene" actors expected to already exist in the world.
 			// Try to create as prop first. If that fails and we have a vehicle
 			// ROI, reuse it (the actor is likely the player's vehicle).
-			std::string lodName(lowered);
-			while (lodName.size() > 1) {
-				char c = lodName.back();
-				if ((c >= '0' && c <= '9') || c == '_') {
-					lodName.pop_back();
-				}
-				else {
-					break;
-				}
-			}
-
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-			roi = CharacterManager()->CreateAutoROI(uniqueName, lodName.c_str(), FALSE);
+			roi = CharacterManager()->CreateAutoROI(uniqueName, TrimLODSuffix(lowered).c_str(), FALSE);
 			if (roi) {
 				roi->SetName(lowered.c_str());
 			}
@@ -214,8 +209,7 @@ void Controller::ComputeRebaseMatrix()
 	// Find the player character node and compute its WORLD transform
 	// at time 0 by accumulating parent transforms (handles nested
 	// '-' nodes like -SBA001BU -> -TILT -> BU).
-	std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin = [&](LegoTreeNode* node,
-																   MxMatrix& parentWorld) -> bool {
+	std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin = [&](LegoTreeNode* node, MxMatrix& parentWorld) -> bool {
 		LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
 		MxU32 roiIdx = data ? data->GetROIIndex() : 0;
 

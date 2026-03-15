@@ -23,7 +23,11 @@ AnimData::AnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f)
 AnimData::~AnimData()
 {
 	delete anim;
+	ReleaseTracks();
+}
 
+void AnimData::ReleaseTracks()
+{
 	for (auto& track : audioTracks) {
 		delete[] track.pcmData;
 	}
@@ -47,12 +51,7 @@ AnimData& AnimData::operator=(AnimData&& p_other) noexcept
 {
 	if (this != &p_other) {
 		delete anim;
-		for (auto& track : audioTracks) {
-			delete[] track.pcmData;
-		}
-		for (auto& track : phonemeTracks) {
-			delete[] reinterpret_cast<MxU8*>(track.flcHeader);
-		}
+		ReleaseTracks();
 
 		anim = p_other.anim;
 		duration = p_other.duration;
