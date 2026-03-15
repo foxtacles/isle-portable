@@ -540,6 +540,8 @@ if (ISLE_EXTENSIONS)
     extensions/src/common/charactercloner.cpp
     extensions/src/common/charactercustomizer.cpp
     extensions/src/common/customizestate.cpp
+    extensions/src/common/npcanimcatalog.cpp
+    extensions/src/common/npcanimplayer.cpp
 
     # Third person camera extension
     extensions/src/thirdpersoncamera.cpp

@@ -205,6 +205,7 @@ public:
 
 private:
 	friend class Multiplayer::NetworkManager;
+	friend class Extensions::Common::NpcAnimCatalog;
 
 	void Init();
 	MxResult FUN_100605e0(

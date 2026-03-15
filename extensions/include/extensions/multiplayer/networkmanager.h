@@ -1,5 +1,7 @@
 #pragma once
 
+#include "extensions/common/npcanimcatalog.h"
+#include "extensions/common/npcanimplayer.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -147,6 +149,12 @@ private:
 	bool m_disableAllNPCs;
 	bool m_showNameBubbles;
 	bool m_lastCameraEnabled;
+
+	// NPC animation playback
+	Extensions::Common::NpcAnimCatalog m_npcAnimCatalog;
+	Extensions::Common::NpcAnimPlayer m_npcAnimPlayer;
+
+	void TickNpcAnim(float p_deltaTime);
 
 	static const uint32_t BROADCAST_INTERVAL_MS = 66; // ~15Hz
 	static const uint32_t TIMEOUT_MS = 5000;          // 5 second timeout

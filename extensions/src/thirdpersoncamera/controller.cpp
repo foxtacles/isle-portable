@@ -30,7 +30,7 @@ using namespace Extensions::ThirdPersonCamera;
 
 Controller::Controller()
 	: m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true, /*.propSuffix=*/0}), m_enabled(false),
-	  m_active(false), m_pendingWorldTransition(false), m_playerROI(nullptr)
+	  m_active(false), m_pendingWorldTransition(false), m_npcAnimPlaying(false), m_playerROI(nullptr)
 {
 }
 
@@ -257,7 +257,7 @@ void Controller::Tick(float p_deltaTime)
 
 	float speed = userActor->GetWorldSpeed();
 	bool isMoving = SDL_fabsf(speed) > 0.01f;
-	if (m_animator.IsInMultiPartEmote()) {
+	if (m_animator.IsInMultiPartEmote() || m_npcAnimPlaying) {
 		isMoving = false;
 		userActor->SetWorldSpeed(0.0f);
 		NavController()->SetLinearVel(0.0f);

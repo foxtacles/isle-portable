@@ -3,9 +3,12 @@
 #include "extensions/common/animdata.h"
 #include "extensions/common/arearestriction.h"
 #include "extensions/common/charactercustomizer.h"
+#include "extensions/common/npcanimcatalog.h"
+#include "extensions/common/npcanimplayer.h"
 #include "extensions/multiplayer/namebubblerenderer.h"
 #include "extensions/thirdpersoncamera.h"
 #include "extensions/thirdpersoncamera/controller.h"
+#include "legoactor.h"
 #include "legoanimationmanager.h"
 #include "legocharactermanager.h"
 #include "legoextraactor.h"
@@ -19,6 +22,7 @@
 #include "mxticklemanager.h"
 #include "roi/legoroi.h"
 
+#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <vector>
@@ -118,6 +122,7 @@ MxResult NetworkManager::Tickle()
 
 	ProcessIncomingPackets();
 	UpdateRemotePlayers(0.016f);
+	TickNpcAnim(0.016f);
 
 	// Re-read time; ProcessIncomingPackets may have advanced SDL_GetTicks.
 	uint32_t timeoutNow = SDL_GetTicks();
@@ -225,6 +230,11 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		if (m_disableAllNPCs) {
 			EnforceDisableNPCs();
 		}
+
+		// Refresh NPC animation catalog from the animation manager
+		if (AnimationManager()) {
+			m_npcAnimCatalog.Refresh(AnimationManager());
+		}
 	}
 }
 
@@ -237,6 +247,15 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 	if (p_world->GetWorldId() == LegoOmni::e_act1) {
 		m_inIsleWorld = false;
 		m_worldSync.SetInIsleWorld(false);
+
+		// Stop NPC animation before ROIs are destroyed
+		if (m_npcAnimPlayer.IsPlaying()) {
+			m_npcAnimPlayer.Stop();
+			ThirdPersonCamera::Controller* cam = GetCamera();
+			if (cam) {
+				cam->SetNpcAnimPlaying(false);
+			}
+		}
 
 		// Destroy local name bubble (ROI is about to be destroyed)
 		if (m_localNameBubble) {
@@ -433,8 +452,8 @@ void NetworkManager::BroadcastLocalState()
 			msg.customizeFlags |= (frozenId & 0x07) << 2;
 		}
 
-		// Zero speed when in any phase of a multi-part emote
-		if (cam->IsInMultiPartEmote()) {
+		// Zero speed when in any phase of a multi-part emote or NPC anim
+		if (cam->IsInMultiPartEmote() || cam->IsNpcAnimPlaying()) {
 			msg.speed = 0.0f;
 		}
 	}
@@ -668,6 +687,34 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 		return;
 	}
 
+	// TEST TRIGGER: When emote 0 (Wave) is triggered, play the first eligible
+	// NPC animation for the current actor instead of the emote.
+	if (p_emoteId == 0 && cam->IsActive() && cam->GetDisplayROI() && !m_npcAnimPlayer.IsPlaying()) {
+		LegoPathActor* userActor = UserActor();
+		if (userActor) {
+			uint8_t actorId = static_cast<LegoActor*>(userActor)->GetActorId();
+			auto eligible = m_npcAnimCatalog.GetEligibleAnimations(actorId);
+			if (!eligible.empty()) {
+				const Common::NpcAnimEntry* entry = eligible[0];
+				SDL_Log(
+					"NPC Anim Test: Playing '%s' (objectId=%u) for actor %u",
+					entry->name,
+					entry->objectId,
+					actorId
+				);
+				cam->SetNpcAnimPlaying(true);
+				m_npcAnimPlayer.Play(*entry, cam->GetDisplayROI());
+
+				// Broadcast zero speed while NPC anim is playing
+				EmoteMsg msg{};
+				msg.header = {MSG_EMOTE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+				msg.emoteId = p_emoteId;
+				SendMessage(msg);
+				return;
+			}
+		}
+	}
+
 	cam->TriggerEmote(p_emoteId);
 
 	EmoteMsg msg{};
@@ -796,6 +843,21 @@ void NetworkManager::SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType
 	msg.changeType = p_changeType;
 	msg.partIndex = p_partIndex;
 	SendMessage(msg);
+}
+
+void NetworkManager::TickNpcAnim(float p_deltaTime)
+{
+	if (m_npcAnimPlayer.IsPlaying()) {
+		m_npcAnimPlayer.Tick(p_deltaTime);
+
+		if (!m_npcAnimPlayer.IsPlaying()) {
+			// Animation finished
+			ThirdPersonCamera::Controller* cam = GetCamera();
+			if (cam) {
+				cam->SetNpcAnimPlaying(false);
+			}
+		}
+	}
 }
 
 void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)

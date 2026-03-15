@@ -8,6 +8,7 @@ class ThirdPersonCameraExt;
 namespace Common
 {
 class CharacterCloner;
+class NpcAnimCatalog;
 }
 namespace ThirdPersonCamera
 {

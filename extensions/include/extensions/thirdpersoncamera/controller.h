@@ -57,6 +57,9 @@ public:
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_animator.IsInVehicle(); }
 
+	void SetNpcAnimPlaying(bool p_playing) { m_npcAnimPlaying = p_playing; }
+	bool IsNpcAnimPlaying() const { return m_npcAnimPlaying; }
+
 	void OnWorldEnabled(LegoWorld* p_world);
 	void OnWorldDisabled(LegoWorld* p_world);
 
@@ -106,6 +109,7 @@ private:
 	bool m_enabled;
 	bool m_active;
 	bool m_pendingWorldTransition;
+	bool m_npcAnimPlaying;
 	LegoROI* m_playerROI;
 };
 
