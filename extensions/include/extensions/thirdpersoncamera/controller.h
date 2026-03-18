@@ -86,6 +86,19 @@ public:
 	bool ConsumeAutoDisable() { return m_input.ConsumeAutoDisable(); }
 	bool ConsumeAutoEnable() { return m_input.ConsumeAutoEnable(); }
 
+	bool IsLeftButtonHeld() const { return m_input.IsLeftButtonHeld(); }
+	bool IsLmbForwardEngaged() const { return m_lmbForwardEngaged; }
+	void SetLmbForwardEngaged(bool p_engaged) { m_lmbForwardEngaged = p_engaged; }
+
+	MxBool HandleFirstPersonForward(
+		LegoNavController* p_nav,
+		const Vector3& p_curPos,
+		const Vector3& p_curDir,
+		Vector3& p_newPos,
+		Vector3& p_newDir,
+		float p_deltaTime
+	);
+
 	float GetOrbitDistance() const { return m_orbit.GetOrbitDistance(); }
 	void SetOrbitDistance(float p_distance) { m_orbit.SetOrbitDistance(p_distance); }
 	void ResetTouchState() { m_input.ResetTouchState(); }
@@ -120,6 +133,7 @@ private:
 	bool m_pendingWorldTransition;
 	bool m_animPlaying;
 	std::function<void()> m_animStopCallback;
+	bool m_lmbForwardEngaged;
 	LegoROI* m_playerROI;
 };
 
