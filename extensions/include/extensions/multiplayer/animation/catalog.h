@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <vector>
 
 class LegoAnimationManager;
@@ -15,9 +16,23 @@ enum AnimCategory : uint8_t {
 	e_otherAnim // characterIndex < 0 (ambient, non-character)
 };
 
+// Number of core playable characters (Pepper, Mama, Papa, Nick, Laura) = g_characters indices 0-4
+static const int8_t CORE_CHARACTER_COUNT = 5;
+
+// Spectator mask with all core characters enabled
+static const uint8_t ALL_CORE_ACTORS_MASK = (1 << CORE_CHARACTER_COUNT) - 1;
+
+// Sentinel value for "no animation selected"
+static const uint16_t ANIM_INDEX_NONE = 0xFFFF;
+
 struct CatalogEntry {
 	uint16_t animIndex; // Index into LegoAnimationManager::m_anims[]
 	AnimCategory category;
+	uint8_t spectatorMask;  // Which core actors can trigger (bit0=Pepper..bit4=Laura)
+	uint64_t performerMask; // Bitmask of g_characters[] indices that appear as character models
+	int16_t location;       // -1 = anywhere, >= 0 = specific location
+	int8_t characterIndex;  // Primary character index into g_characters[]
+	uint8_t modelCount;     // Number of models in animation
 };
 
 class Catalog {
@@ -26,19 +41,28 @@ public:
 
 	const AnimInfo* GetAnimInfo(uint16_t p_animIndex) const;
 
-	std::vector<const CatalogEntry*> GetEligibleNpcAnimations(uint8_t p_displayActorIndex) const;
-	std::vector<const CatalogEntry*> GetEligibleCamAnimations(uint8_t p_displayActorIndex) const;
+	// All non-otherAnim entries at a location (-1 = NPC anims, >= 0 = location-bound)
+	std::vector<const CatalogEntry*> GetAnimationsAtLocation(int16_t p_location) const;
 
-	bool NeedsCounterpart(uint16_t p_animIndex) const;
+	// Check if a player can fill any role (spectator or participant) in this animation.
+	// Accepts a display actor index (converted to g_characters index internally).
+	bool CanParticipate(const CatalogEntry* p_entry, uint8_t p_displayActorIndex) const;
+
+	// Same check but using a g_characters index directly.
+	static bool CanParticipateChar(const CatalogEntry* p_entry, int8_t p_charIndex);
+
+	// Check if a set of character indices can collectively trigger this animation.
+	// Requires at least one valid spectator AND every performer character covered.
+	// Roles are mutually exclusive: a character that is a performer cannot also spectate.
+	bool CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const;
 
 	// Convert a display actor index to the g_characters[] index used by animations.
 	// Returns -1 if no match.
 	static int8_t DisplayActorToCharacterIndex(uint8_t p_displayActorIndex);
 
 private:
-	std::vector<const CatalogEntry*> FilterEligible(AnimCategory p_category, int8_t p_characterIndex) const;
-
 	std::vector<CatalogEntry> m_entries;
+	std::map<int16_t, std::vector<size_t>> m_locationIndex; // location ID → indices into m_entries
 	AnimInfo* m_animsBase;
 	uint16_t m_animCount;
 };

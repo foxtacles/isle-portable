@@ -36,6 +36,8 @@ public:
 	bool IsSpawned() const { return m_spawned; }
 	bool IsVisible() const { return m_visible; }
 	int8_t GetWorldId() const { return m_targetWorldId; }
+	int16_t GetNearestLocation() const { return m_nearestLocation; }
+	void SetNearestLocation(int16_t p_location) { m_nearestLocation = p_location; }
 	uint32_t GetLastUpdateTime() const { return m_lastUpdateTime; }
 	void SetVisible(bool p_visible);
 	void TriggerEmote(uint8_t p_emoteId);
@@ -76,6 +78,7 @@ private:
 	int8_t m_targetWorldId;
 	uint32_t m_lastUpdateTime;
 	bool m_hasReceivedUpdate;
+	int16_t m_nearestLocation;
 
 	float m_currentPosition[3];
 	float m_currentDirection[3];

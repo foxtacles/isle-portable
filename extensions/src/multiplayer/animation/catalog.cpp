@@ -1,17 +1,36 @@
 #include "extensions/multiplayer/animation/catalog.h"
 
+#include "decomp.h"
 #include "legoanimationmanager.h"
 #include "legocharactermanager.h"
 #include "misc.h"
 
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_stdinc.h>
+
 using namespace Multiplayer::Animation;
 
-// All 5 main actors have bits set
-static const MxU8 ALL_MAIN_ACTORS_MASK = 0x1F;
+// Defined in legoanimationmanager.cpp
+extern LegoAnimationManager::Character g_characters[47];
+
+// Exact-match a model name against g_characters[].m_name.
+// The engine's LegoAnimationManager::GetCharacterIndex uses 2-char prefix matching,
+// which causes false positives (e.g. "ladder" matching "laura"). We need exact
+// matching to correctly identify character performers vs props.
+static int8_t GetCharacterIndex(const char* p_name)
+{
+	for (int8_t i = 0; i < (int8_t) sizeOfArray(g_characters); i++) {
+		if (!SDL_strcasecmp(p_name, g_characters[i].m_name)) {
+			return i;
+		}
+	}
+	return -1;
+}
 
 void Catalog::Refresh(LegoAnimationManager* p_am)
 {
 	m_entries.clear();
+	m_locationIndex.clear();
 	m_animsBase = nullptr;
 	m_animCount = 0;
 
@@ -33,19 +52,62 @@ void Catalog::Refresh(LegoAnimationManager* p_am)
 
 		CatalogEntry entry;
 		entry.animIndex = i;
+		entry.spectatorMask = m_animsBase[i].m_unk0x0c;
+		entry.location = m_animsBase[i].m_location;
+		entry.characterIndex = m_animsBase[i].m_characterIndex;
+		entry.modelCount = m_animsBase[i].m_modelCount;
 
-		if (m_animsBase[i].m_characterIndex < 0) {
+		if (entry.characterIndex < 0) {
 			entry.category = e_otherAnim;
 		}
-		else if (m_animsBase[i].m_location == -1) {
+		else if (entry.location == -1) {
 			entry.category = e_npcAnim;
 		}
 		else {
 			entry.category = e_camAnim;
 		}
 
+		// Compute performerMask by matching models against g_characters[].m_name
+		entry.performerMask = 0;
+		for (uint8_t m = 0; m < entry.modelCount; m++) {
+			if (m_animsBase[i].m_models && m_animsBase[i].m_models[m].m_name) {
+				int8_t charIdx = GetCharacterIndex(m_animsBase[i].m_models[m].m_name);
+				if (charIdx >= 0) {
+					entry.performerMask |= (uint64_t(1) << charIdx);
+				}
+			}
+		}
+
+		size_t idx = m_entries.size();
 		m_entries.push_back(entry);
+
+		// Build location index
+		m_locationIndex[entry.location].push_back(idx);
 	}
+
+	// Log catalog summary
+	int npcCount = 0, camCount = 0, otherCount = 0;
+	for (const auto& e : m_entries) {
+		switch (e.category) {
+		case e_npcAnim:
+			npcCount++;
+			break;
+		case e_camAnim:
+			camCount++;
+			break;
+		case e_otherAnim:
+			otherCount++;
+			break;
+		}
+	}
+	SDL_Log(
+		"[Anim] Catalog refreshed: %u entries (%d npc, %d cam, %d other), %u locations",
+		(unsigned) m_entries.size(),
+		npcCount,
+		camCount,
+		otherCount,
+		(unsigned) m_locationIndex.size()
+	);
 }
 
 const AnimInfo* Catalog::GetAnimInfo(uint16_t p_animIndex) const
@@ -63,67 +125,105 @@ int8_t Catalog::DisplayActorToCharacterIndex(uint8_t p_displayActorIndex)
 		return -1;
 	}
 
-	// GetCharacterIndex matches first 2 chars of name against g_characters[].m_name
-	return AnimationManager()->GetCharacterIndex(actorName);
+	return GetCharacterIndex(actorName);
 }
 
-std::vector<const CatalogEntry*> Catalog::FilterEligible(AnimCategory p_category, int8_t p_characterIndex) const
+std::vector<const CatalogEntry*> Catalog::GetAnimationsAtLocation(int16_t p_location) const
 {
 	std::vector<const CatalogEntry*> result;
 
-	for (const auto& entry : m_entries) {
-		if (entry.category != p_category) {
-			continue;
+	// Helper to add entries from a location, filtering out e_otherAnim
+	auto addFromLocation = [&](int16_t loc) {
+		auto it = m_locationIndex.find(loc);
+		if (it != m_locationIndex.end()) {
+			for (size_t idx : it->second) {
+				if (m_entries[idx].category != e_otherAnim) {
+					result.push_back(&m_entries[idx]);
+				}
+			}
 		}
+	};
 
-		const AnimInfo& info = m_animsBase[entry.animIndex];
+	// Always include NPC animations (location == -1)
+	addFromLocation(-1);
 
-		// Animation must be for the player's character
-		if (info.m_characterIndex != p_characterIndex) {
-			continue;
-		}
-
-		// Must have at least one model
-		if (info.m_modelCount == 0) {
-			continue;
-		}
-
-		// Check eligibility mask. If the mask doesn't cover all 5 main actors,
-		// a counterpart is needed. For now we pretend no counterpart is available,
-		// so we only include animations where ALL main actors can trigger
-		// (mask has all 5 bits set = no specific counterpart needed).
-		if ((info.m_unk0x0c & ALL_MAIN_ACTORS_MASK) != ALL_MAIN_ACTORS_MASK) {
-			continue;
-		}
-
-		result.push_back(&entry);
+	// If requesting a specific location, also include location-bound animations
+	if (p_location >= 0) {
+		addFromLocation(p_location);
 	}
 
 	return result;
 }
 
-std::vector<const CatalogEntry*> Catalog::GetEligibleNpcAnimations(uint8_t p_displayActorIndex) const
+// Check if the spectator mask allows this character to spectate.
+// Does NOT check performer exclusion — caller must do that if needed.
+static bool CheckSpectatorMask(const CatalogEntry* p_entry, int8_t p_charIndex)
 {
-	int8_t charIndex = DisplayActorToCharacterIndex(p_displayActorIndex);
-	if (charIndex < 0) {
-		return {};
+	if (p_charIndex < CORE_CHARACTER_COUNT) {
+		return (p_entry->spectatorMask >> p_charIndex) & 1;
 	}
-	return FilterEligible(e_npcAnim, charIndex);
+
+	// Non-core characters (index 5+): only if all core actors allowed
+	return p_entry->spectatorMask == ALL_CORE_ACTORS_MASK;
 }
 
-std::vector<const CatalogEntry*> Catalog::GetEligibleCamAnimations(uint8_t p_displayActorIndex) const
+bool Catalog::CanParticipateChar(const CatalogEntry* p_entry, int8_t p_charIndex)
 {
-	int8_t charIndex = DisplayActorToCharacterIndex(p_displayActorIndex);
-	if (charIndex < 0) {
-		return {};
-	}
-	return FilterEligible(e_camAnim, charIndex);
-}
-
-bool Catalog::NeedsCounterpart(uint16_t p_animIndex) const
-{
-	if (!m_animsBase || p_animIndex >= m_animCount) {
+	if (p_charIndex < 0) {
 		return false;
 	}
-	return m_animsBase[p_animIndex].m_modelCount >= 2;
+
+	// Performer: player's character is one of the performing models
+	if ((p_entry->performerMask >> p_charIndex) & 1) {
+		return true;
+	}
+
+	// Spectator: not a performer, spectator mask allows them
+	return CheckSpectatorMask(p_entry, p_charIndex);
+}
+
+bool Catalog::CanParticipate(const CatalogEntry* p_entry, uint8_t p_displayActorIndex) const
+{
+	return CanParticipateChar(p_entry, DisplayActorToCharacterIndex(p_displayActorIndex));
+}
+
+bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const
+{
+	// First pass: assign performers (each performer slot needs exactly one player)
+	uint64_t coveredPerformers = 0;
+	bool assignedAsPerformer[256] = {};
+
+	for (uint8_t i = 0; i < p_count; i++) {
+		int8_t charIndex = p_charIndices[i];
+		if (charIndex < 0) {
+			continue;
+		}
+
+		uint64_t charBit = uint64_t(1) << charIndex;
+		// Assign as performer only if this slot isn't already covered
+		if ((p_entry->performerMask & charBit) && !(coveredPerformers & charBit)) {
+			coveredPerformers |= charBit;
+			assignedAsPerformer[i] = true;
+		}
+	}
+
+	if (coveredPerformers != p_entry->performerMask) {
+		return false;
+	}
+
+	// Second pass: find a spectator among unassigned players
+	for (uint8_t i = 0; i < p_count; i++) {
+		if (assignedAsPerformer[i]) {
+			continue;
+		}
+
+		int8_t charIndex = p_charIndices[i];
+		// Spectator role: not a performer, and spectator mask allows them
+		if (charIndex >= 0 && !((p_entry->performerMask >> charIndex) & 1) &&
+			CheckSpectatorMask(p_entry, charIndex)) {
+			return true;
+		}
+	}
+
+	return false;
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace Multiplayer
 {
 
@@ -27,6 +29,11 @@ public:
 
 	// Called when the connection status changes (connected, reconnecting, failed).
 	virtual void OnConnectionStatusChanged(int p_status) = 0;
+
+	// Called when the nearest animation location changes.
+	// p_location = nearest location index, or -1 if none within range.
+	// p_animCount = number of animations available at this location.
+	virtual void OnNearestLocationChanged(int16_t p_location, uint16_t p_animCount) = 0;
 };
 
 } // namespace Multiplayer

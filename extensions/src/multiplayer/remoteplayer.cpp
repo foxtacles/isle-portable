@@ -29,7 +29,7 @@ using Common::WORLD_NOT_VISIBLE;
 RemotePlayer::RemotePlayer(uint32_t p_peerId, uint8_t p_actorId, uint8_t p_displayActorIndex)
 	: m_peerId(p_peerId), m_actorId(p_actorId), m_displayActorIndex(p_displayActorIndex), m_roi(nullptr),
 	  m_spawned(false), m_visible(false), m_targetSpeed(0.0f), m_targetVehicleType(VEHICLE_NONE),
-	  m_targetWorldId(WORLD_NOT_VISIBLE), m_lastUpdateTime(SDL_GetTicks()), m_hasReceivedUpdate(false),
+	  m_targetWorldId(WORLD_NOT_VISIBLE), m_lastUpdateTime(SDL_GetTicks()), m_hasReceivedUpdate(false), m_nearestLocation(-1),
 	  m_animator(Common::CharacterAnimatorConfig{/*.saveEmoteTransform=*/false, /*.propSuffix=*/p_peerId}),
 	  m_vehicleROI(nullptr), m_nameBubble(nullptr), m_allowRemoteCustomize(true)
 {

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "extensions/multiplayer/animation/catalog.h"
+#include "extensions/multiplayer/animation/coordinator.h"
+#include "extensions/multiplayer/animation/locationproximity.h"
 #include "extensions/multiplayer/animation/sceneplayer.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
@@ -77,6 +79,11 @@ public:
 	void RequestSendEmote(uint8_t p_emoteId) { m_pendingEmote.store(p_emoteId, std::memory_order_relaxed); }
 	void RequestToggleNameBubbles() { m_pendingToggleNameBubbles.store(true, std::memory_order_relaxed); }
 	void RequestToggleAllowCustomize() { m_pendingToggleAllowCustomize.store(true, std::memory_order_relaxed); }
+	void RequestSetAnimInterest(int32_t p_animIndex)
+	{
+		m_pendingAnimInterest.store(p_animIndex, std::memory_order_relaxed);
+	}
+	void RequestCancelAnimInterest() { m_pendingAnimCancel.store(true, std::memory_order_relaxed); }
 
 	bool IsInIsleWorld() const { return m_inIsleWorld; }
 	bool GetShowNameBubbles() const { return m_showNameBubbles; }
@@ -159,6 +166,8 @@ private:
 	std::atomic<int> m_pendingIdleAnim;
 	std::atomic<int> m_pendingEmote;
 	std::atomic<bool> m_pendingToggleAllowCustomize;
+	std::atomic<int32_t> m_pendingAnimInterest;
+	std::atomic<bool> m_pendingAnimCancel;
 
 	bool m_disableAllNPCs;
 	bool m_showNameBubbles;
@@ -168,6 +177,8 @@ private:
 	// NPC animation playback
 	Multiplayer::Animation::Catalog m_animCatalog;
 	Multiplayer::Animation::ScenePlayer m_scenePlayer;
+	Multiplayer::Animation::LocationProximity m_locationProximity;
+	Multiplayer::Animation::Coordinator m_animCoordinator;
 
 	void TickAnimation(float p_deltaTime);
 
@@ -178,8 +189,8 @@ private:
 	uint32_t m_reconnectDelay;
 	uint32_t m_nextReconnectTime;
 
-	static const uint32_t BROADCAST_INTERVAL_MS = 66;       // ~15Hz
-	static const uint32_t TIMEOUT_MS = 5000;                // 5 second timeout
+	static const uint32_t BROADCAST_INTERVAL_MS = 66; // ~15Hz
+	static const uint32_t TIMEOUT_MS = 5000;          // 5 second timeout
 	static const uint32_t RECONNECT_INITIAL_DELAY_MS = 1000;
 	static const uint32_t RECONNECT_MAX_DELAY_MS = 30000;
 	static const uint32_t RECONNECT_MAX_ATTEMPTS = 10;

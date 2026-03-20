@@ -51,6 +51,7 @@ NetworkManager::NetworkManager()
 	  m_sequence(0), m_lastBroadcastTime(0), m_lastValidActorId(0), m_localAllowRemoteCustomize(true),
 	  m_inIsleWorld(false), m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false),
 	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
+	  m_pendingAnimInterest(-1), m_pendingAnimCancel(false),
 	  m_disableAllNPCs(false), m_showNameBubbles(true), m_lastCameraEnabled(false), m_wasInRestrictedArea(false),
 	  m_connectionState(STATE_DISCONNECTED), m_wasRejected(false), m_reconnectAttempt(0), m_reconnectDelay(0),
 	  m_nextReconnectTime(0)
@@ -106,6 +107,29 @@ MxResult NetworkManager::Tickle()
 		if (m_localNameBubble && cam->GetDisplayROI()) {
 			m_localNameBubble->Update(cam->GetDisplayROI());
 		}
+	}
+
+	// Update local player location proximity
+	if (m_inIsleWorld) {
+		LegoPathActor* userActor = UserActor();
+		if (userActor && userActor->GetROI()) {
+			const float* pos = userActor->GetROI()->GetWorldPosition();
+			if (m_locationProximity.Update(pos[0], pos[2])) {
+				int16_t loc = m_locationProximity.GetNearestLocation();
+				auto anims = m_animCatalog.GetAnimationsAtLocation(loc);
+				SDL_Log(
+					"[Anim] Location changed: %d (%.1f units away, %u animations)",
+					loc,
+					m_locationProximity.GetNearestDistance(),
+					(unsigned) anims.size()
+				);
+				if (m_callbacks) {
+					m_callbacks->OnNearestLocationChanged(loc, static_cast<uint16_t>(anims.size()));
+				}
+			}
+		}
+
+		m_animCoordinator.Tick(SDL_GetTicks());
 	}
 
 	if (!m_transport) {
@@ -190,6 +214,9 @@ void NetworkManager::Disconnect()
 		m_transport->Disconnect();
 	}
 	RemoveAllRemotePlayers();
+	m_animCoordinator.Reset();
+	m_pendingAnimInterest.store(-1, std::memory_order_relaxed);
+	m_pendingAnimCancel.store(false, std::memory_order_relaxed);
 }
 
 bool NetworkManager::IsConnected() const
@@ -204,6 +231,8 @@ bool NetworkManager::WasRejected() const
 
 void NetworkManager::StopAnimation()
 {
+	m_animCoordinator.Reset();
+
 	if (m_scenePlayer.IsPlaying()) {
 		m_scenePlayer.Stop();
 		ThirdPersonCamera::Controller* cam = GetCamera();
@@ -250,7 +279,10 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		// Refresh animation catalog from the animation manager
 		if (AnimationManager()) {
 			m_animCatalog.Refresh(AnimationManager());
+			m_animCoordinator.SetCatalog(&m_animCatalog);
 		}
+
+		m_locationProximity.Reset();
 	}
 }
 
@@ -265,8 +297,11 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		m_wasInRestrictedArea = false;
 		m_worldSync.SetInIsleWorld(false);
 
-		// Stop animation before ROIs are destroyed
+		// Stop animation before ROIs are destroyed (also resets coordinator)
 		StopAnimation();
+		m_locationProximity.Reset();
+		m_pendingAnimInterest.store(-1, std::memory_order_relaxed);
+		m_pendingAnimCancel.store(false, std::memory_order_relaxed);
 
 		// Destroy local name bubble (ROI is about to be destroyed)
 		if (m_localNameBubble) {
@@ -430,6 +465,7 @@ void NetworkManager::ResetStateAfterReconnect()
 	m_sequence = 0;
 	m_lastBroadcastTime = 0;
 	m_worldSync.ResetForReconnect();
+	m_animCoordinator.Reset();
 }
 
 void NetworkManager::ProcessPendingRequests()
@@ -467,6 +503,15 @@ void NetworkManager::ProcessPendingRequests()
 		if (emote >= 0) {
 			SendEmote(static_cast<uint8_t>(emote));
 		}
+	}
+
+	int32_t animInterest = m_pendingAnimInterest.exchange(-1, std::memory_order_relaxed);
+	if (animInterest >= 0) {
+		m_animCoordinator.SetInterest(static_cast<uint16_t>(animInterest));
+	}
+
+	if (m_pendingAnimCancel.exchange(false, std::memory_order_relaxed)) {
+		m_animCoordinator.ClearInterest();
 	}
 
 	if (m_pendingToggleAllowCustomize.exchange(false, std::memory_order_relaxed)) {
@@ -667,8 +712,16 @@ void NetworkManager::ProcessIncomingPackets()
 
 void NetworkManager::UpdateRemotePlayers(float p_deltaTime)
 {
+	float radius = m_locationProximity.GetRadius();
+
 	for (auto& [peerId, player] : m_remotePlayers) {
 		player->Tick(p_deltaTime);
+
+		// Derive nearest location from remote player's current position
+		if (player->IsSpawned() && player->GetROI()) {
+			const float* pos = player->GetROI()->GetWorldPosition();
+			player->SetNearestLocation(Animation::LocationProximity::ComputeNearest(pos[0], pos[2], radius));
+		}
 	}
 }
 
@@ -790,15 +843,87 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 	}
 
 	// TEST TRIGGER: When emote 0-2 is triggered, play the first eligible
-	// animation for the current display actor instead of the emote.
+	// animation for the current display actor at their nearest location.
+	// Uses the same cooperative logic as real playback: needs spectator + all performers.
 	if ((p_emoteId == 0 || p_emoteId == 1 || p_emoteId == 2) && cam->IsActive() && cam->GetDisplayROI() &&
 		!m_scenePlayer.IsPlaying()) {
 		uint8_t displayActorIndex = cam->GetDisplayActorIndex();
-		auto eligible = m_animCatalog.GetEligibleNpcAnimations(displayActorIndex);
-		if (!eligible.empty()) {
-			size_t idx = SDL_min((size_t) p_emoteId, eligible.size() - 1);
-			const Animation::CatalogEntry* entry = eligible[idx];
+		int8_t localCharIndex = Animation::Catalog::DisplayActorToCharacterIndex(displayActorIndex);
+		int16_t location = m_locationProximity.GetNearestLocation();
+		auto anims = m_animCatalog.GetAnimationsAtLocation(location);
+
+		// Build character index array: local player + remote players at this location
+		std::vector<int8_t> charIndices;
+		charIndices.push_back(localCharIndex);
+		for (const auto& [peerId, player] : m_remotePlayers) {
+			if (player->IsSpawned() && player->GetNearestLocation() == location) {
+				charIndices.push_back(
+					Animation::Catalog::DisplayActorToCharacterIndex(player->GetDisplayActorIndex())
+				);
+			}
+		}
+
+		SDL_Log(
+			"[Anim] Test trigger: emote=%d, charIndex=%d, location=%d, players=%u, totalAnims=%u",
+			p_emoteId,
+			localCharIndex,
+			location,
+			(unsigned) charIndices.size(),
+			(unsigned) anims.size()
+		);
+
+		// Filter to animations where the local player has a role, log those
+		std::vector<const Animation::CatalogEntry*> triggerable;
+		int withRole = 0;
+		for (const auto* e : anims) {
+			bool hasRole = Animation::Catalog::CanParticipateChar(e, localCharIndex);
+			if (!hasRole) {
+				continue;
+			}
+
+			withRole++;
+			const AnimInfo* info = m_animCatalog.GetAnimInfo(e->animIndex);
+			bool isPerformer = localCharIndex >= 0 && ((e->performerMask >> localCharIndex) & 1);
+			bool canTrigger =
+				m_animCatalog.CanTrigger(e, charIndices.data(), static_cast<uint8_t>(charIndices.size()));
+
+			SDL_Log(
+				"[Anim]   [%d] %s (obj=%u loc=%d mask=0x%02x performers=0x%llx models=%d char=%d) "
+				"-> %s, canTrigger=%s%s",
+				e->animIndex,
+				info ? info->m_name : "?",
+				info ? info->m_objectId : 0,
+				e->location,
+				e->spectatorMask,
+				(unsigned long long) e->performerMask,
+				e->modelCount,
+				e->characterIndex,
+				isPerformer ? "performer" : "spectator",
+				canTrigger ? "YES" : "no",
+				canTrigger ? "" : " (needs players)"
+			);
+
+			if (canTrigger) {
+				triggerable.push_back(e);
+			}
+		}
+
+		SDL_Log("[Anim] Triggerable: %u / %u with role, %u total at location",
+			(unsigned) triggerable.size(), withRole, (unsigned) anims.size());
+
+		if (!triggerable.empty()) {
+			size_t idx = SDL_min((size_t) p_emoteId, triggerable.size() - 1);
+			const Animation::CatalogEntry* entry = triggerable[idx];
 			const AnimInfo* animInfo = m_animCatalog.GetAnimInfo(entry->animIndex);
+
+			SDL_Log(
+				"[Anim] Playing [%d] %s (emoteId=%d -> index %u of %u triggerable)",
+				entry->animIndex,
+				animInfo ? animInfo->m_name : "?",
+				p_emoteId,
+				(unsigned) idx,
+				(unsigned) triggerable.size()
+			);
 
 			cam->SetAnimPlaying(true, [this]() { m_scenePlayer.Stop(); });
 			m_scenePlayer.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
@@ -809,6 +934,8 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 			SendMessage(msg);
 			return;
 		}
+
+		SDL_Log("[Anim] No triggerable animations (all need more players)");
 	}
 
 	cam->TriggerEmote(p_emoteId);
