@@ -555,6 +555,7 @@ if (ISLE_EXTENSIONS)
     extensions/src/multiplayer/animation/loader.cpp
     extensions/src/multiplayer/animation/locationproximity.cpp
     extensions/src/multiplayer/animation/sceneplayer.cpp
+    extensions/src/multiplayer/animation/sessionhost.cpp
     extensions/src/multiplayer/animation/audioplayer.cpp
     extensions/src/multiplayer/animation/phonemeplayer.cpp
     extensions/src/multiplayer.cpp

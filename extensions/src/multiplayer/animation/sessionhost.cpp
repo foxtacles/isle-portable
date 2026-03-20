@@ -1,0 +1,316 @@
+#include "extensions/multiplayer/animation/sessionhost.h"
+
+#include "extensions/multiplayer/animation/catalog.h"
+#include "extensions/multiplayer/animation/coordinator.h"
+
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_timer.h>
+
+using namespace Multiplayer::Animation;
+
+void SessionHost::SetCatalog(const Catalog* p_catalog)
+{
+	m_catalog = p_catalog;
+}
+
+AnimSession SessionHost::CreateSession(const CatalogEntry* p_entry, uint16_t p_animIndex)
+{
+	AnimSession session;
+	session.animIndex = p_animIndex;
+	session.state = CoordinationState::e_interested;
+	session.countdownEndTime = 0;
+
+	for (int8_t i = 0; i < 64; i++) {
+		uint64_t bit = uint64_t(1) << i;
+		if (!(p_entry->performerMask & bit)) {
+			continue;
+		}
+
+		SessionSlot slot;
+		slot.peerId = 0;
+		slot.charIndex = i;
+		slot.isSpectator = false;
+		session.slots.push_back(slot);
+	}
+
+	SessionSlot spectatorSlot;
+	spectatorSlot.peerId = 0;
+	spectatorSlot.charIndex = -1;
+	spectatorSlot.isSpectator = true;
+	session.slots.push_back(spectatorSlot);
+
+	return session;
+}
+
+bool SessionHost::TryAssignSlot(AnimSession& p_session, uint32_t p_peerId, int8_t p_charIndex)
+{
+	for (const auto& slot : p_session.slots) {
+		if (slot.peerId == p_peerId) {
+			return false;
+		}
+	}
+
+	// Performer slots first
+	for (auto& slot : p_session.slots) {
+		if (!slot.isSpectator && slot.peerId == 0 && slot.charIndex == p_charIndex) {
+			slot.peerId = p_peerId;
+			return true;
+		}
+	}
+
+	// Spectator slot
+	if (!m_catalog) {
+		return false;
+	}
+
+	const CatalogEntry* entry = m_catalog->FindEntry(p_session.animIndex);
+	if (!entry) {
+		return false;
+	}
+
+	for (auto& slot : p_session.slots) {
+		if (slot.isSpectator && slot.peerId == 0) {
+			if (p_charIndex >= 0 && !((entry->performerMask >> p_charIndex) & 1)) {
+				bool allowed = false;
+				if (p_charIndex < CORE_CHARACTER_COUNT) {
+					allowed = ((entry->spectatorMask >> p_charIndex) & 1) != 0;
+				}
+				else {
+					allowed = (entry->spectatorMask == ALL_CORE_ACTORS_MASK);
+				}
+				if (allowed) {
+					slot.peerId = p_peerId;
+					return true;
+				}
+			}
+			break;
+		}
+	}
+
+	return false;
+}
+
+bool SessionHost::AllSlotsFilled(const AnimSession& p_session) const
+{
+	for (const auto& slot : p_session.slots) {
+		if (slot.peerId == 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void SessionHost::RemovePlayerFromAllSessions(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims)
+{
+	RemovePlayerFromSessions(p_peerId, false, p_changedAnims);
+}
+
+void SessionHost::RemovePlayerFromSessions(
+	uint32_t p_peerId,
+	bool p_includePlayingSessions,
+	std::vector<uint16_t>& p_changedAnims)
+{
+	std::vector<uint16_t> toErase;
+
+	for (auto& [animIndex, session] : m_sessions) {
+		if (!p_includePlayingSessions && session.state == CoordinationState::e_playing) {
+			continue;
+		}
+
+		bool found = false;
+		for (auto& slot : session.slots) {
+			if (slot.peerId == p_peerId) {
+				slot.peerId = 0;
+				found = true;
+				break;
+			}
+		}
+
+		if (found) {
+			if (session.state == CoordinationState::e_countdown) {
+				session.state = CoordinationState::e_interested;
+				session.countdownEndTime = 0;
+			}
+
+			bool anyFilled = false;
+			for (const auto& slot : session.slots) {
+				if (slot.peerId != 0) {
+					anyFilled = true;
+					break;
+				}
+			}
+
+			if (!anyFilled) {
+				toErase.push_back(animIndex);
+			}
+
+			p_changedAnims.push_back(animIndex);
+		}
+	}
+
+	for (uint16_t idx : toErase) {
+		m_sessions.erase(idx);
+	}
+}
+
+bool SessionHost::HandleInterest(
+	uint32_t p_peerId,
+	uint16_t p_animIndex,
+	uint8_t p_displayActorIndex,
+	std::vector<uint16_t>& p_changedAnims)
+{
+	if (!m_catalog) {
+		return false;
+	}
+
+	int8_t charIndex = Catalog::DisplayActorToCharacterIndex(p_displayActorIndex);
+
+	RemovePlayerFromAllSessions(p_peerId, p_changedAnims);
+
+	const CatalogEntry* entry = m_catalog->FindEntry(p_animIndex);
+	if (!entry) {
+		return !p_changedAnims.empty();
+	}
+
+	auto it = m_sessions.find(p_animIndex);
+	if (it == m_sessions.end()) {
+		m_sessions[p_animIndex] = CreateSession(entry, p_animIndex);
+		it = m_sessions.find(p_animIndex);
+	}
+
+	bool assigned = TryAssignSlot(it->second, p_peerId, charIndex);
+
+	// Always broadcast: on success the new slot is shown, on failure the rejected
+	// player's client receives the session state and clears their optimistic interest.
+	p_changedAnims.push_back(p_animIndex);
+
+	// Clean up empty sessions (created but no one could fill a slot)
+	if (!assigned) {
+		bool anyFilled = false;
+		for (const auto& slot : it->second.slots) {
+			if (slot.peerId != 0) {
+				anyFilled = true;
+				break;
+			}
+		}
+		if (!anyFilled) {
+			m_sessions.erase(it);
+		}
+	}
+
+	return !p_changedAnims.empty();
+}
+
+bool SessionHost::HandleCancel(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims)
+{
+	RemovePlayerFromAllSessions(p_peerId, p_changedAnims);
+	return !p_changedAnims.empty();
+}
+
+bool SessionHost::HandlePlayerRemoved(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims)
+{
+	RemovePlayerFromSessions(p_peerId, true, p_changedAnims);
+	return !p_changedAnims.empty();
+}
+
+bool SessionHost::HandlePlayerCharChanged(
+	uint32_t p_peerId,
+	uint8_t p_newDisplayActorIndex,
+	std::vector<uint16_t>& p_changedAnims)
+{
+	RemovePlayerFromSessions(p_peerId, true, p_changedAnims);
+	return !p_changedAnims.empty();
+}
+
+void SessionHost::StartCountdown(uint16_t p_animIndex)
+{
+	auto it = m_sessions.find(p_animIndex);
+	if (it != m_sessions.end() && it->second.state == CoordinationState::e_interested) {
+		it->second.state = CoordinationState::e_countdown;
+		it->second.countdownEndTime = SDL_GetTicks() + COUNTDOWN_DURATION_MS;
+		SDL_Log("[SessionHost] Starting countdown for anim %d", p_animIndex);
+	}
+}
+
+void SessionHost::RevertCountdown(uint16_t p_animIndex)
+{
+	auto it = m_sessions.find(p_animIndex);
+	if (it != m_sessions.end() && it->second.state == CoordinationState::e_countdown) {
+		it->second.state = CoordinationState::e_interested;
+		it->second.countdownEndTime = 0;
+		SDL_Log("[SessionHost] Reverted countdown for anim %d (participants separated)", p_animIndex);
+	}
+}
+
+uint16_t SessionHost::Tick(uint32_t p_now)
+{
+	for (auto& [animIndex, session] : m_sessions) {
+		if (session.state == CoordinationState::e_countdown && p_now >= session.countdownEndTime) {
+			session.state = CoordinationState::e_playing;
+			SDL_Log("[SessionHost] Countdown expired for anim %d", animIndex);
+			return animIndex;
+		}
+	}
+
+	return ANIM_INDEX_NONE;
+}
+
+void SessionHost::Reset()
+{
+	m_sessions.clear();
+}
+
+void SessionHost::EraseSession(uint16_t p_animIndex)
+{
+	m_sessions.erase(p_animIndex);
+}
+
+const AnimSession* SessionHost::FindSession(uint16_t p_animIndex) const
+{
+	auto it = m_sessions.find(p_animIndex);
+	if (it != m_sessions.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+const std::map<uint16_t, AnimSession>& SessionHost::GetSessions() const
+{
+	return m_sessions;
+}
+
+bool SessionHost::AreAllSlotsFilled(uint16_t p_animIndex) const
+{
+	auto it = m_sessions.find(p_animIndex);
+	if (it == m_sessions.end()) {
+		return false;
+	}
+	return AllSlotsFilled(it->second);
+}
+
+uint16_t SessionHost::ComputeCountdownMs(const AnimSession& p_session, uint32_t p_now)
+{
+	if (p_session.state != CoordinationState::e_countdown) {
+		return 0;
+	}
+
+	if (p_now >= p_session.countdownEndTime) {
+		return 0;
+	}
+
+	uint32_t remaining = p_session.countdownEndTime - p_now;
+	if (remaining > 0xFFFF) {
+		return 0xFFFF;
+	}
+	return static_cast<uint16_t>(remaining);
+}
+
+bool SessionHost::HasCountdownSession() const
+{
+	for (const auto& [animIndex, session] : m_sessions) {
+		if (session.state == CoordinationState::e_countdown) {
+			return true;
+		}
+	}
+	return false;
+}

@@ -4,6 +4,7 @@
 #include "extensions/multiplayer/animation/coordinator.h"
 #include "extensions/multiplayer/animation/locationproximity.h"
 #include "extensions/multiplayer/animation/sceneplayer.h"
+#include "extensions/multiplayer/animation/sessionhost.h"
 #include "extensions/multiplayer/networktransport.h"
 #include "extensions/multiplayer/platformcallbacks.h"
 #include "extensions/multiplayer/protocol.h"
@@ -129,6 +130,18 @@ private:
 	void HandleEmote(const EmoteMsg& p_msg);
 	void HandleCustomize(const CustomizeMsg& p_msg);
 
+	// Animation coordination handlers
+	void HandleAnimInterest(uint32_t p_peerId, uint16_t p_animIndex, uint8_t p_displayActorIndex);
+	void HandleAnimCancel(uint32_t p_peerId);
+	void HandleAnimUpdate(const AnimUpdateMsg& p_msg);
+	void HandleAnimStart(const AnimStartMsg& p_msg);
+	void HandleAnimStartLocally(uint16_t p_animIndex);
+	void BroadcastAnimUpdate(uint16_t p_animIndex);
+	void BroadcastAnimStart(uint16_t p_animIndex);
+	int16_t GetPeerLocation(uint32_t p_peerId) const;
+	bool GetPeerPosition(uint32_t p_peerId, float& p_x, float& p_z) const;
+	bool ValidateSessionLocations(uint16_t p_animIndex);
+
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();
@@ -180,6 +193,8 @@ private:
 	Multiplayer::Animation::ScenePlayer m_scenePlayer;
 	Multiplayer::Animation::LocationProximity m_locationProximity;
 	Multiplayer::Animation::Coordinator m_animCoordinator;
+	Multiplayer::Animation::SessionHost m_animSessionHost;
+	int32_t m_localPendingAnimInterest;
 
 	void TickAnimation(float p_deltaTime);
 

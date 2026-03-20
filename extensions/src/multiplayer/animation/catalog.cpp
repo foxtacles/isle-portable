@@ -128,6 +128,16 @@ int8_t Catalog::DisplayActorToCharacterIndex(uint8_t p_displayActorIndex)
 	return GetCharacterIndex(actorName);
 }
 
+const CatalogEntry* Catalog::FindEntry(uint16_t p_animIndex) const
+{
+	for (const auto& entry : m_entries) {
+		if (entry.animIndex == p_animIndex) {
+			return &entry;
+		}
+	}
+	return nullptr;
+}
+
 std::vector<const CatalogEntry*> Catalog::GetAnimationsAtLocation(int16_t p_location) const
 {
 	std::vector<const CatalogEntry*> result;

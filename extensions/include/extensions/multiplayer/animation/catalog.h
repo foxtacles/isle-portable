@@ -40,6 +40,7 @@ public:
 	void Refresh(LegoAnimationManager* p_am);
 
 	const AnimInfo* GetAnimInfo(uint16_t p_animIndex) const;
+	const CatalogEntry* FindEntry(uint16_t p_animIndex) const;
 
 	// All non-otherAnim entries at a location (-1 = NPC anims, >= 0 = location-bound)
 	std::vector<const CatalogEntry*> GetAnimationsAtLocation(int16_t p_location) const;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <vector>
 
 namespace Multiplayer::Animation
@@ -33,6 +34,13 @@ struct EligibilityInfo {
 	std::vector<SlotInfo> slots; // All role slots (performers + spectator), filled status each
 };
 
+struct SessionView {
+	CoordinationState state;
+	uint16_t countdownMs;
+	uint32_t peerSlots[8]; // peerId per slot (matches AnimUpdateMsg layout)
+	uint8_t slotCount;
+};
+
 class Coordinator {
 public:
 	Coordinator();
@@ -42,13 +50,19 @@ public:
 	CoordinationState GetState() const { return m_state; }
 	uint16_t GetCurrentAnimIndex() const { return m_currentAnimIndex; }
 
+	void SetLocalPeerId(uint32_t p_peerId);
 	void SetInterest(uint16_t p_animIndex);
 	void ClearInterest();
 
-	// Compute eligibility for animations at a location given all available players.
-	// p_charIndices[0] is the local player; the rest are remote players at this location.
+	// Compute eligibility for animations at a location.
+	// p_locationChars: local player + remote players at the same location (for cam anims).
+	// p_proximityChars: local player + remote players within proximity (for NPC anims).
 	std::vector<EligibilityInfo> ComputeEligibility(
-		int16_t p_location, const int8_t* p_charIndices, uint8_t p_count) const;
+		int16_t p_location,
+		const int8_t* p_locationChars,
+		uint8_t p_locationCount,
+		const int8_t* p_proximityChars,
+		uint8_t p_proximityCount) const;
 
 	// Auto-clear interest if current animation is not available at the new location.
 	void OnLocationChanged(int16_t p_location, const Catalog* p_catalog);
@@ -56,16 +70,31 @@ public:
 	void Tick(uint32_t p_now);
 	void Reset();
 
-	// Networking hooks (stubs, wired up in Part 4)
-	void OnRemoteInterest(uint32_t p_peerId, uint16_t p_animIndex);
-	void OnRemoteInterestClear(uint32_t p_peerId);
-	void OnAnimationStart(uint16_t p_animIndex, uint32_t p_startTimeDelta);
-	void OnAnimationCancel(uint16_t p_animIndex);
+	// Apply authoritative session state from host
+	void ApplySessionUpdate(
+		uint16_t p_animIndex,
+		uint8_t p_state,
+		uint16_t p_countdownMs,
+		const uint32_t p_slots[8],
+		uint8_t p_slotCount);
+
+	// Apply animation start from host
+	void ApplyAnimStart(uint16_t p_animIndex);
+
+	// Get session view for an animation (nullptr if no session)
+	const SessionView* GetSessionView(uint16_t p_animIndex) const;
+
+	// Check if local player is in a session for this animation
+	bool IsLocalPlayerInSession(uint16_t p_animIndex) const;
 
 private:
 	const Catalog* m_catalog;
 	CoordinationState m_state;
 	uint16_t m_currentAnimIndex;
+	uint32_t m_localPeerId;
+
+	// Known sessions from host broadcasts
+	std::map<uint16_t, SessionView> m_sessions;
 };
 
 } // namespace Multiplayer::Animation
