@@ -56,6 +56,16 @@ public:
 	// Roles are mutually exclusive: a character that is a performer cannot also spectate.
 	bool CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const;
 
+	// Like CanTrigger but outputs per-slot fill status.
+	// p_filledPerformers: bitmask of which performer bits in performerMask are covered.
+	// p_spectatorFilled: whether a valid spectator was found among unassigned players.
+	bool CanTriggerDetailed(
+		const CatalogEntry* p_entry,
+		const int8_t* p_charIndices,
+		uint8_t p_count,
+		uint64_t* p_filledPerformers,
+		bool* p_spectatorFilled) const;
+
 	// Convert a display actor index to the g_characters[] index used by animations.
 	// Returns -1 if no match.
 	static int8_t DisplayActorToCharacterIndex(uint8_t p_displayActorIndex);

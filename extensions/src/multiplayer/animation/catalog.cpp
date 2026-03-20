@@ -187,10 +187,17 @@ bool Catalog::CanParticipate(const CatalogEntry* p_entry, uint8_t p_displayActor
 	return CanParticipateChar(p_entry, DisplayActorToCharacterIndex(p_displayActorIndex));
 }
 
-bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const
+bool Catalog::CanTriggerDetailed(
+	const CatalogEntry* p_entry,
+	const int8_t* p_charIndices,
+	uint8_t p_count,
+	uint64_t* p_filledPerformers,
+	bool* p_spectatorFilled) const
 {
+	*p_filledPerformers = 0;
+	*p_spectatorFilled = false;
+
 	// First pass: assign performers (each performer slot needs exactly one player)
-	uint64_t coveredPerformers = 0;
 	bool assignedAsPerformer[256] = {};
 
 	for (uint8_t i = 0; i < p_count; i++) {
@@ -200,16 +207,13 @@ bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndice
 		}
 
 		uint64_t charBit = uint64_t(1) << charIndex;
-		// Assign as performer only if this slot isn't already covered
-		if ((p_entry->performerMask & charBit) && !(coveredPerformers & charBit)) {
-			coveredPerformers |= charBit;
+		if ((p_entry->performerMask & charBit) && !(*p_filledPerformers & charBit)) {
+			*p_filledPerformers |= charBit;
 			assignedAsPerformer[i] = true;
 		}
 	}
 
-	if (coveredPerformers != p_entry->performerMask) {
-		return false;
-	}
+	bool allPerformersCovered = (*p_filledPerformers == p_entry->performerMask);
 
 	// Second pass: find a spectator among unassigned players
 	for (uint8_t i = 0; i < p_count; i++) {
@@ -218,12 +222,19 @@ bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndice
 		}
 
 		int8_t charIndex = p_charIndices[i];
-		// Spectator role: not a performer, and spectator mask allows them
 		if (charIndex >= 0 && !((p_entry->performerMask >> charIndex) & 1) &&
 			CheckSpectatorMask(p_entry, charIndex)) {
-			return true;
+			*p_spectatorFilled = true;
+			break;
 		}
 	}
 
-	return false;
+	return allPerformersCovered && *p_spectatorFilled;
+}
+
+bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const
+{
+	uint64_t filledPerformers;
+	bool spectatorFilled;
+	return CanTriggerDetailed(p_entry, p_charIndices, p_count, &filledPerformers, &spectatorFilled);
 }

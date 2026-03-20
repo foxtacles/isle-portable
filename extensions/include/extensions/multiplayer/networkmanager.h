@@ -139,6 +139,7 @@ private:
 
 	void NotifyPlayerCountChanged();
 	void EnforceDisableNPCs();
+	void PushAnimationState();
 
 	// Serialize and send a fixed-size message via the transport
 	template <typename T>
@@ -182,6 +183,11 @@ private:
 
 	void TickAnimation(float p_deltaTime);
 
+	// Animation state push
+	bool m_animStateDirty;
+	bool m_animInterestDirty;
+	uint32_t m_lastAnimPushTime;
+
 	ConnectionState m_connectionState;
 	bool m_wasRejected;
 	std::string m_roomId;
@@ -194,6 +200,7 @@ private:
 	static const uint32_t RECONNECT_INITIAL_DELAY_MS = 1000;
 	static const uint32_t RECONNECT_MAX_DELAY_MS = 30000;
 	static const uint32_t RECONNECT_MAX_ATTEMPTS = 10;
+	static const uint32_t ANIM_PUSH_COOLDOWN_MS = 250; // max ~4Hz for movement-based changes
 };
 
 } // namespace Multiplayer

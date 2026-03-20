@@ -1,8 +1,12 @@
 #include "extensions/multiplayer/animation/coordinator.h"
 
 #include "extensions/multiplayer/animation/catalog.h"
+#include "legoanimationmanager.h"
 
 using namespace Multiplayer::Animation;
+
+// Defined in legoanimationmanager.cpp
+extern LegoAnimationManager::Character g_characters[47];
 
 Coordinator::Coordinator() : m_catalog(nullptr), m_state(CoordinationState::e_idle), m_currentAnimIndex(ANIM_INDEX_NONE)
 {
@@ -31,6 +35,45 @@ void Coordinator::ClearInterest()
 	}
 }
 
+// Build the unified slots vector from CanTriggerDetailed results.
+// Each bit in performerMask becomes one slot; the spectator becomes one slot at the end.
+static void BuildSlots(
+	const CatalogEntry* p_entry,
+	uint64_t p_filledPerformers,
+	bool p_spectatorFilled,
+	std::vector<SlotInfo>& p_slots)
+{
+	// One slot per performer bit in performerMask
+	for (int8_t i = 0; i < 64; i++) {
+		uint64_t bit = uint64_t(1) << i;
+		if (!(p_entry->performerMask & bit)) {
+			continue;
+		}
+
+		SlotInfo slot;
+		if (i < (int8_t) sizeOfArray(g_characters)) {
+			slot.names.push_back(g_characters[i].m_name);
+		}
+		slot.filled = (p_filledPerformers & bit) != 0;
+		p_slots.push_back(std::move(slot));
+	}
+
+	// One spectator slot
+	SlotInfo spectatorSlot;
+	if (p_entry->spectatorMask == ALL_CORE_ACTORS_MASK) {
+		spectatorSlot.names.push_back("any");
+	}
+	else {
+		for (int8_t i = 0; i < CORE_CHARACTER_COUNT; i++) {
+			if ((p_entry->spectatorMask >> i) & 1) {
+				spectatorSlot.names.push_back(g_characters[i].m_name);
+			}
+		}
+	}
+	spectatorSlot.filled = p_spectatorFilled;
+	p_slots.push_back(std::move(spectatorSlot));
+}
+
 std::vector<EligibilityInfo> Coordinator::ComputeEligibility(
 	int16_t p_location, const int8_t* p_charIndices, uint8_t p_count) const
 {
@@ -50,18 +93,46 @@ std::vector<EligibilityInfo> Coordinator::ComputeEligibility(
 
 		EligibilityInfo info;
 		info.animIndex = entry->animIndex;
+		info.entry = entry;
 
 		bool atLoc = (entry->location == -1) || (entry->location == p_location);
-		bool allRolesFilled = atLoc && m_catalog->CanTrigger(entry, p_charIndices, p_count);
-
 		info.atLocation = atLoc;
-		info.eligible = allRolesFilled;
-		info.needsOtherPlayers = atLoc && !allRolesFilled;
 
-		result.push_back(info);
+		uint64_t filledPerformers = 0;
+		bool spectatorFilled = false;
+
+		if (atLoc) {
+			info.eligible =
+				m_catalog->CanTriggerDetailed(entry, p_charIndices, p_count, &filledPerformers, &spectatorFilled);
+		}
+		else {
+			info.eligible = false;
+		}
+
+		BuildSlots(entry, filledPerformers, spectatorFilled, info.slots);
+
+		result.push_back(std::move(info));
 	}
 
 	return result;
+}
+
+void Coordinator::OnLocationChanged(int16_t p_location, const Catalog* p_catalog)
+{
+	if (m_state != CoordinationState::e_interested || !p_catalog) {
+		return;
+	}
+
+	auto anims = p_catalog->GetAnimationsAtLocation(p_location);
+	for (const auto* e : anims) {
+		if (e->animIndex == m_currentAnimIndex) {
+			return; // still available
+		}
+	}
+
+	// Animation not at new location — clear interest
+	m_state = CoordinationState::e_idle;
+	m_currentAnimIndex = ANIM_INDEX_NONE;
 }
 
 void Coordinator::Tick(uint32_t p_now)

@@ -14,7 +14,7 @@ public:
 	void OnNameBubblesChanged(bool p_enabled) override;
 	void OnAllowCustomizeChanged(bool p_enabled) override;
 	void OnConnectionStatusChanged(int p_status) override;
-	void OnNearestLocationChanged(int16_t p_location, uint16_t p_animCount) override;
+	void OnAnimationsAvailable(const char* p_json) override;
 };
 
 } // namespace Multiplayer

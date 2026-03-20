@@ -32,6 +32,9 @@ using Common::IsMultiPartEmote;
 using Common::IsRestrictedArea;
 using Common::WORLD_NOT_VISIBLE;
 
+// Defined in legoanimationmanager.cpp
+extern LegoAnimationManager::Character g_characters[47];
+
 template <typename T>
 void NetworkManager::SendMessage(const T& p_msg)
 {
@@ -53,6 +56,7 @@ NetworkManager::NetworkManager()
 	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
 	  m_pendingAnimInterest(-1), m_pendingAnimCancel(false),
 	  m_disableAllNPCs(false), m_showNameBubbles(true), m_lastCameraEnabled(false), m_wasInRestrictedArea(false),
+	  m_animStateDirty(false), m_animInterestDirty(false), m_lastAnimPushTime(0),
 	  m_connectionState(STATE_DISCONNECTED), m_wasRejected(false), m_reconnectAttempt(0), m_reconnectDelay(0),
 	  m_nextReconnectTime(0)
 {
@@ -116,16 +120,13 @@ MxResult NetworkManager::Tickle()
 			const float* pos = userActor->GetROI()->GetWorldPosition();
 			if (m_locationProximity.Update(pos[0], pos[2])) {
 				int16_t loc = m_locationProximity.GetNearestLocation();
-				auto anims = m_animCatalog.GetAnimationsAtLocation(loc);
 				SDL_Log(
-					"[Anim] Location changed: %d (%.1f units away, %u animations)",
+					"[Anim] Location changed: %d (%.1f units away)",
 					loc,
-					m_locationProximity.GetNearestDistance(),
-					(unsigned) anims.size()
+					m_locationProximity.GetNearestDistance()
 				);
-				if (m_callbacks) {
-					m_callbacks->OnNearestLocationChanged(loc, static_cast<uint16_t>(anims.size()));
-				}
+				m_animStateDirty = true;
+				m_animCoordinator.OnLocationChanged(loc, &m_animCatalog);
 			}
 		}
 
@@ -160,6 +161,18 @@ MxResult NetworkManager::Tickle()
 	}
 	for (uint32_t peerId : timedOut) {
 		RemoveRemotePlayer(peerId);
+	}
+
+	// Push animation state to frontend if dirty (throttled)
+	if (m_animStateDirty && m_inIsleWorld && m_callbacks) {
+		uint32_t pushNow = SDL_GetTicks();
+		bool cooldownExpired = (pushNow - m_lastAnimPushTime) >= ANIM_PUSH_COOLDOWN_MS;
+		if (cooldownExpired || m_animInterestDirty) {
+			m_animStateDirty = false;
+			m_animInterestDirty = false;
+			m_lastAnimPushTime = pushNow;
+			PushAnimationState();
+		}
 	}
 
 	return SUCCESS;
@@ -232,6 +245,7 @@ bool NetworkManager::WasRejected() const
 void NetworkManager::StopAnimation()
 {
 	m_animCoordinator.Reset();
+	m_animStateDirty = true;
 
 	if (m_scenePlayer.IsPlaying()) {
 		m_scenePlayer.Stop();
@@ -302,6 +316,12 @@ void NetworkManager::OnWorldDisabled(LegoWorld* p_world)
 		m_locationProximity.Reset();
 		m_pendingAnimInterest.store(-1, std::memory_order_relaxed);
 		m_pendingAnimCancel.store(false, std::memory_order_relaxed);
+		m_animStateDirty = false;
+		if (m_callbacks) {
+			m_callbacks->OnAnimationsAvailable(
+				"{\"location\":-1,\"state\":0,\"currentAnimIndex\":65535,\"animations\":[]}"
+			);
+		}
 
 		// Destroy local name bubble (ROI is about to be destroyed)
 		if (m_localNameBubble) {
@@ -508,10 +528,14 @@ void NetworkManager::ProcessPendingRequests()
 	int32_t animInterest = m_pendingAnimInterest.exchange(-1, std::memory_order_relaxed);
 	if (animInterest >= 0) {
 		m_animCoordinator.SetInterest(static_cast<uint16_t>(animInterest));
+		m_animStateDirty = true;
+		m_animInterestDirty = true;
 	}
 
 	if (m_pendingAnimCancel.exchange(false, std::memory_order_relaxed)) {
 		m_animCoordinator.ClearInterest();
+		m_animStateDirty = true;
+		m_animInterestDirty = true;
 	}
 
 	if (m_pendingToggleAllowCustomize.exchange(false, std::memory_order_relaxed)) {
@@ -713,14 +737,20 @@ void NetworkManager::ProcessIncomingPackets()
 void NetworkManager::UpdateRemotePlayers(float p_deltaTime)
 {
 	float radius = m_locationProximity.GetRadius();
+	int16_t localLoc = m_locationProximity.GetNearestLocation();
 
 	for (auto& [peerId, player] : m_remotePlayers) {
 		player->Tick(p_deltaTime);
 
 		// Derive nearest location from remote player's current position
 		if (player->IsSpawned() && player->GetROI()) {
+			int16_t oldLoc = player->GetNearestLocation();
 			const float* pos = player->GetROI()->GetWorldPosition();
-			player->SetNearestLocation(Animation::LocationProximity::ComputeNearest(pos[0], pos[2], radius));
+			int16_t newLoc = Animation::LocationProximity::ComputeNearest(pos[0], pos[2], radius);
+			player->SetNearestLocation(newLoc);
+			if (oldLoc != newLoc && (oldLoc == localLoc || newLoc == localLoc)) {
+				m_animStateDirty = true;
+			}
 		}
 	}
 }
@@ -775,6 +805,7 @@ void NetworkManager::HandleState(const PlayerStateMsg& p_msg)
 		m_remotePlayers.erase(it);
 		CreateAndSpawnPlayer(peerId, p_msg.actorId, p_msg.displayActorIndex);
 		it = m_remotePlayers.find(peerId);
+		m_animStateDirty = true;
 	}
 	else if (IsValidActorId(p_msg.actorId)) {
 		it->second->SetActorId(p_msg.actorId); // Update for future use, no visual change
@@ -959,6 +990,9 @@ void NetworkManager::RemoveRemotePlayer(uint32_t p_peerId)
 {
 	auto it = m_remotePlayers.find(p_peerId);
 	if (it != m_remotePlayers.end()) {
+		if (it->second->GetNearestLocation() == m_locationProximity.GetNearestLocation()) {
+			m_animStateDirty = true;
+		}
 		if (it->second->GetROI()) {
 			m_roiToPlayer.erase(it->second->GetROI());
 		}
@@ -975,6 +1009,7 @@ void NetworkManager::RemoveAllRemotePlayers()
 	}
 	m_remotePlayers.clear();
 	m_roiToPlayer.clear();
+	m_animStateDirty = true;
 	NotifyPlayerCountChanged();
 }
 
@@ -1151,5 +1186,102 @@ void NetworkManager::HandleCustomize(const CustomizeMsg& p_msg)
 				cam->SetClickAnimObjectId(clickAnimId);
 			}
 		}
+	}
+}
+
+// Helper: append a JSON-escaped string value (assumes no control chars in input)
+static void JsonAppendString(std::string& p_out, const char* p_str)
+{
+	p_out += '"';
+	p_out += p_str;
+	p_out += '"';
+}
+
+void NetworkManager::PushAnimationState()
+{
+	ThirdPersonCamera::Controller* cam = GetCamera();
+	if (!cam || !cam->GetDisplayROI()) {
+		return;
+	}
+
+	int16_t location = m_locationProximity.GetNearestLocation();
+	uint8_t displayActorIndex = cam->GetDisplayActorIndex();
+	int8_t localCharIndex = Animation::Catalog::DisplayActorToCharacterIndex(displayActorIndex);
+
+	std::vector<int8_t> charIndices;
+	charIndices.push_back(localCharIndex);
+	for (const auto& [peerId, player] : m_remotePlayers) {
+		if (player->IsSpawned() && player->GetNearestLocation() == location) {
+			charIndices.push_back(
+				Animation::Catalog::DisplayActorToCharacterIndex(player->GetDisplayActorIndex())
+			);
+		}
+	}
+
+	auto eligibility = m_animCoordinator.ComputeEligibility(
+		location, charIndices.data(), static_cast<uint8_t>(charIndices.size()));
+
+	// Build JSON
+	std::string json;
+	json.reserve(2048);
+	json += "{\"location\":";
+	json += std::to_string(location);
+	json += ",\"state\":";
+	json += std::to_string(static_cast<uint8_t>(m_animCoordinator.GetState()));
+	json += ",\"currentAnimIndex\":";
+	json += std::to_string(m_animCoordinator.GetCurrentAnimIndex());
+	json += ",\"animations\":[";
+
+	bool firstAnim = true;
+	for (size_t i = 0; i < eligibility.size(); i++) {
+		const auto& info = eligibility[i];
+		const AnimInfo* animInfo = m_animCatalog.GetAnimInfo(info.animIndex);
+		if (!animInfo) {
+			continue;
+		}
+
+		if (!firstAnim) {
+			json += ',';
+		}
+		firstAnim = false;
+
+		json += "{\"animIndex\":";
+		json += std::to_string(info.animIndex);
+		json += ",\"name\":";
+		JsonAppendString(json, animInfo->m_name ? animInfo->m_name : "");
+		json += ",\"objectId\":";
+		json += std::to_string(animInfo->m_objectId);
+		json += ",\"category\":";
+		json += std::to_string(static_cast<uint8_t>(info.entry->category));
+		json += ",\"eligible\":";
+		json += info.eligible ? "true" : "false";
+		json += ",\"atLocation\":";
+		json += info.atLocation ? "true" : "false";
+		json += ",\"slots\":[";
+
+		for (size_t s = 0; s < info.slots.size(); s++) {
+			const auto& slot = info.slots[s];
+			if (s > 0) {
+				json += ',';
+			}
+			json += "{\"names\":[";
+			for (size_t n = 0; n < slot.names.size(); n++) {
+				if (n > 0) {
+					json += ',';
+				}
+				JsonAppendString(json, slot.names[n]);
+			}
+			json += "],\"filled\":";
+			json += slot.filled ? "true" : "false";
+			json += '}';
+		}
+
+		json += "]}";
+	}
+
+	json += "]}";
+
+	if (m_callbacks) {
+		m_callbacks->OnAnimationsAvailable(json.c_str());
 	}
 }

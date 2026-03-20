@@ -64,17 +64,17 @@ void EmscriptenCallbacks::OnConnectionStatusChanged(int p_status)
 	// clang-format on
 }
 
-void EmscriptenCallbacks::OnNearestLocationChanged(int16_t p_location, uint16_t p_animCount)
+void EmscriptenCallbacks::OnAnimationsAvailable(const char* p_json)
 {
 	// clang-format off
 	MAIN_THREAD_EM_ASM({
 		var canvas = Module.canvas;
 		if (canvas) {
-			canvas.dispatchEvent(new CustomEvent('nearestLocationChanged', {
-				detail: { location: $0, animCount: $1 }
+			canvas.dispatchEvent(new CustomEvent('animationsAvailable', {
+				detail: { json: UTF8ToString($0) }
 			}));
 		}
-	}, p_location, p_animCount);
+	}, p_json);
 	// clang-format on
 }
 
