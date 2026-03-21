@@ -135,7 +135,7 @@ private:
 	void HandleAnimCancel(uint32_t p_peerId);
 	void HandleAnimUpdate(const AnimUpdateMsg& p_msg);
 	void HandleAnimStart(const AnimStartMsg& p_msg);
-	void HandleAnimStartLocally(uint16_t p_animIndex);
+	void HandleAnimStartLocally(uint16_t p_animIndex, bool p_localInSession);
 	AnimUpdateMsg BuildAnimUpdateMsg(uint16_t p_animIndex, uint32_t p_target);
 	void BroadcastAnimUpdate(uint16_t p_animIndex);
 	void SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_targetPeerId);
@@ -203,6 +203,7 @@ private:
 	Multiplayer::Animation::Coordinator m_animCoordinator;
 	Multiplayer::Animation::SessionHost m_animSessionHost;
 	int32_t m_localPendingAnimInterest;
+	uint16_t m_playingAnimIndex;
 
 	void TickAnimation();
 	void StopScenePlayback(bool p_unlockRemotes);

@@ -33,12 +33,14 @@ public:
 	ScenePlayer();
 	~ScenePlayer();
 
-	// p_participants[0] must be the local player
+	// When p_observerMode is false, p_participants[0] must be the local player.
+	// When p_observerMode is true, participants are only remote performers (no local player).
 	void Play(
 		const AnimInfo* p_animInfo,
 		AnimCategory p_category,
 		const ParticipantROI* p_participants,
-		uint8_t p_participantCount
+		uint8_t p_participantCount,
+		bool p_observerMode = false
 	);
 	void Tick();
 	void Stop();
@@ -87,6 +89,7 @@ private:
 	std::vector<LegoROI*> m_propROIs;
 
 	bool m_hasCamAnim;
+	bool m_observerMode;
 	std::vector<LegoROI*> m_ptAtCamROIs;
 	bool m_hideOnStop;
 };

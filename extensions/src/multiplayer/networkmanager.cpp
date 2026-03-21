@@ -67,10 +67,11 @@ NetworkManager::NetworkManager()
 	  m_sequence(0), m_lastBroadcastTime(0), m_lastValidActorId(0), m_localAllowRemoteCustomize(true),
 	  m_inIsleWorld(false), m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false),
 	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
-	  m_pendingAnimInterest(-1), m_pendingAnimCancel(false), m_localPendingAnimInterest(-1), m_disableAllNPCs(false),
-	  m_showNameBubbles(true), m_lastCameraEnabled(false), m_wasInRestrictedArea(false), m_animStateDirty(false),
-	  m_animInterestDirty(false), m_lastAnimPushTime(0), m_connectionState(STATE_DISCONNECTED), m_wasRejected(false),
-	  m_reconnectAttempt(0), m_reconnectDelay(0), m_nextReconnectTime(0)
+	  m_pendingAnimInterest(-1), m_pendingAnimCancel(false), m_localPendingAnimInterest(-1),
+	  m_playingAnimIndex(Animation::ANIM_INDEX_NONE), m_disableAllNPCs(false), m_showNameBubbles(true),
+	  m_lastCameraEnabled(false), m_wasInRestrictedArea(false), m_animStateDirty(false), m_animInterestDirty(false),
+	  m_lastAnimPushTime(0), m_connectionState(STATE_DISCONNECTED), m_wasRejected(false), m_reconnectAttempt(0),
+	  m_reconnectDelay(0), m_nextReconnectTime(0)
 {
 }
 
@@ -1190,6 +1191,7 @@ void NetworkManager::StopScenePlayback(bool p_unlockRemotes)
 	}
 
 	m_scenePlayer.Stop();
+	m_playingAnimIndex = Animation::ANIM_INDEX_NONE;
 
 	if (p_unlockRemotes) {
 		for (auto& [peerId, player] : m_remotePlayers) {
@@ -1221,14 +1223,12 @@ void NetworkManager::TickAnimation()
 			cam->SetAnimPlaying(false);
 		}
 
-		if (IsHost()) {
-			uint16_t playingAnim = m_animCoordinator.GetCurrentAnimIndex();
-			if (playingAnim != Animation::ANIM_INDEX_NONE) {
-				m_animSessionHost.EraseSession(playingAnim);
-				BroadcastAnimUpdate(playingAnim); // Broadcast cleared state
-			}
+		if (IsHost() && m_playingAnimIndex != Animation::ANIM_INDEX_NONE) {
+			m_animSessionHost.EraseSession(m_playingAnimIndex);
+			BroadcastAnimUpdate(m_playingAnimIndex); // Broadcast cleared state
 		}
 
+		m_playingAnimIndex = Animation::ANIM_INDEX_NONE;
 		m_animCoordinator.Reset();
 		m_animStateDirty = true;
 		m_animInterestDirty = true;
@@ -1298,9 +1298,7 @@ void NetworkManager::TickHostSessions()
 	uint16_t readyAnim = m_animSessionHost.Tick(SDL_GetTicks());
 	if (readyAnim != Animation::ANIM_INDEX_NONE) {
 		BroadcastAnimStart(readyAnim);
-		if (m_animCoordinator.IsLocalPlayerInSession(readyAnim)) {
-			HandleAnimStartLocally(readyAnim);
-		}
+		HandleAnimStartLocally(readyAnim, m_animCoordinator.IsLocalPlayerInSession(readyAnim));
 	}
 
 	// During countdown, push state every tick so countdownMs reaches the frontend
@@ -1386,8 +1384,7 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 
 	m_animCoordinator.ApplySessionUpdate(p_msg.animIndex, p_msg.state, p_msg.countdownMs, slots, p_msg.slotCount);
 
-	if (p_msg.state == static_cast<uint8_t>(Animation::CoordinationState::e_countdown) &&
-		m_animCoordinator.IsLocalPlayerInSession(p_msg.animIndex)) {
+	if (p_msg.state == static_cast<uint8_t>(Animation::CoordinationState::e_countdown)) {
 		const AnimInfo* ai = m_animCatalog.GetAnimInfo(p_msg.animIndex);
 		if (ai) {
 			m_scenePlayer.PreloadAsync(ai->m_objectId);
@@ -1404,6 +1401,11 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 		StopScenePlayback(true);
 	}
 
+	// Stop observer playback when the observed session is cleared
+	if (m_scenePlayer.IsPlaying() && m_playingAnimIndex == p_msg.animIndex && p_msg.state == 0) {
+		StopScenePlayback(true);
+	}
+
 	m_animStateDirty = true;
 	m_animInterestDirty = true;
 }
@@ -1415,23 +1417,23 @@ void NetworkManager::HandleAnimStart(const AnimStartMsg& p_msg)
 	}
 
 	m_animCoordinator.ApplyAnimStart(p_msg.animIndex);
-
-	if (m_animCoordinator.IsLocalPlayerInSession(p_msg.animIndex)) {
-		HandleAnimStartLocally(p_msg.animIndex);
-	}
+	HandleAnimStartLocally(p_msg.animIndex, m_animCoordinator.IsLocalPlayerInSession(p_msg.animIndex));
 
 	m_animStateDirty = true;
 	m_animInterestDirty = true;
 }
 
-void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
+void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex, bool p_localInSession)
 {
 	auto abortSession = [&]() {
-		if (IsHost()) {
-			m_animSessionHost.EraseSession(p_animIndex);
-			BroadcastAnimUpdate(p_animIndex);
+		// Observers must not abort the authoritative session — only participants may do that
+		if (p_localInSession) {
+			if (IsHost()) {
+				m_animSessionHost.EraseSession(p_animIndex);
+				BroadcastAnimUpdate(p_animIndex);
+			}
+			m_animCoordinator.Reset();
 		}
-		m_animCoordinator.Reset();
 		m_animStateDirty = true;
 	};
 
@@ -1448,7 +1450,7 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 	}
 
 	ThirdPersonCamera::Controller* cam = GetCamera();
-	if (!cam || !cam->GetDisplayROI()) {
+	if (p_localInSession && (!cam || !cam->GetDisplayROI())) {
 		abortSession();
 		return;
 	}
@@ -1456,7 +1458,9 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 	const Animation::SessionView* view = m_animCoordinator.GetSessionView(p_animIndex);
 	std::vector<int8_t> slotChars = Animation::SessionHost::ComputeSlotCharIndices(entry);
 
-	// Build participants: local player first, then remotes
+	bool observerMode = !p_localInSession;
+
+	// Build participants: local player first (if participating), then remotes
 	int8_t localCharIndex = -1;
 	std::vector<Animation::ParticipantROI> participants;
 
@@ -1491,8 +1495,8 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 		}
 	}
 
-	// Insert local player at index 0
-	{
+	// Insert local player at index 0 only when participating
+	if (!observerMode) {
 		Animation::ParticipantROI local;
 		local.roi = cam->GetDisplayROI();
 		local.vehicleROI = cam->GetRideVehicleROI();
@@ -1500,12 +1504,22 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 		participants.insert(participants.begin(), local);
 	}
 
-	bool localIsPerformer = (localCharIndex >= 0);
-	cam->SetAnimPlaying(true, localIsPerformer, [this]() { m_scenePlayer.Stop(); });
-	m_scenePlayer.Play(animInfo, entry->category, participants.data(), (uint8_t) participants.size());
+	if (participants.empty()) {
+		abortSession();
+		return;
+	}
+
+	if (!observerMode) {
+		bool localIsPerformer = (localCharIndex >= 0);
+		cam->SetAnimPlaying(true, localIsPerformer, [this]() { m_scenePlayer.Stop(); });
+	}
+
+	m_scenePlayer.Play(animInfo, entry->category, participants.data(), (uint8_t) participants.size(), observerMode);
 
 	if (!m_scenePlayer.IsPlaying()) {
-		cam->SetAnimPlaying(false);
+		if (!observerMode) {
+			cam->SetAnimPlaying(false);
+		}
 		// Unlock remote players on failure
 		for (auto& [peerId, player] : m_remotePlayers) {
 			player->SetAnimationLocked(false);
@@ -1514,6 +1528,7 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 		return;
 	}
 
+	m_playingAnimIndex = p_animIndex;
 	m_localPendingAnimInterest = -1;
 	m_animStateDirty = true;
 }

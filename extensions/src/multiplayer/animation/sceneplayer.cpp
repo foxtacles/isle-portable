@@ -62,7 +62,7 @@ static bool MatchesCharacter(const std::string& p_actorName, int8_t p_charIndex)
 ScenePlayer::ScenePlayer()
 	: m_playing(false), m_rebaseComputed(false), m_startTime(0), m_currentData(nullptr), m_category(e_npcAnim),
 	  m_animRootROI(nullptr), m_vehicleROI(nullptr), m_hiddenVehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0),
-	  m_hasCamAnim(false), m_hideOnStop(false)
+	  m_hasCamAnim(false), m_observerMode(false), m_hideOnStop(false)
 {
 }
 
@@ -250,7 +250,8 @@ void ScenePlayer::Play(
 	const AnimInfo* p_animInfo,
 	AnimCategory p_category,
 	const ParticipantROI* p_participants,
-	uint8_t p_participantCount
+	uint8_t p_participantCount,
+	bool p_observerMode
 )
 {
 	if (m_playing) {
@@ -269,6 +270,7 @@ void ScenePlayer::Play(
 	m_currentData = data;
 	m_category = p_category;
 	m_hideOnStop = data->hideOnStop;
+	m_observerMode = p_observerMode;
 
 	// Build participant list with saved transforms for restoration
 	for (uint8_t i = 0; i < p_participantCount; i++) {
@@ -293,9 +295,10 @@ void ScenePlayer::Play(
 	m_phonemePlayer.Init(data->phonemeTracks, m_roiMap, m_roiMapSize);
 	m_audioPlayer.Init(data->audioTracks);
 
-	m_hasCamAnim = (m_category == e_camAnim && m_currentData->anim->GetCamAnim() != nullptr);
+	// Observers don't get camera control — they watch the animation from their own viewpoint
+	m_hasCamAnim = (!m_observerMode && m_category == e_camAnim && m_currentData->anim->GetCamAnim() != nullptr);
 
-	if (m_category == e_camAnim) {
+	if (m_category == e_camAnim && !m_observerMode) {
 		for (auto& p : m_participants) {
 			if (p.IsSpectator()) {
 				p.roi->SetVisibility(FALSE);
@@ -556,6 +559,7 @@ void ScenePlayer::Stop()
 	m_currentData = nullptr;
 	m_animRootROI = nullptr;
 	m_hasCamAnim = false;
+	m_observerMode = false;
 	m_startTime = 0;
 	m_hideOnStop = false;
 }
