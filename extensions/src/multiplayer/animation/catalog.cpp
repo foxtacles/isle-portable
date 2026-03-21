@@ -5,7 +5,6 @@
 #include "legocharactermanager.h"
 #include "misc.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 
 using namespace Multiplayer::Animation;
@@ -100,14 +99,6 @@ void Catalog::Refresh(LegoAnimationManager* p_am)
 			break;
 		}
 	}
-	SDL_Log(
-		"[Anim] Catalog refreshed: %u entries (%d npc, %d cam, %d other), %u locations",
-		(unsigned) m_entries.size(),
-		npcCount,
-		camCount,
-		otherCount,
-		(unsigned) m_locationIndex.size()
-	);
 }
 
 const AnimInfo* Catalog::GetAnimInfo(uint16_t p_animIndex) const

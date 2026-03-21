@@ -20,7 +20,6 @@
 #include "mxticklemanager.h"
 #include "roi/legoroi.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <vector>
@@ -38,6 +37,13 @@ extern LegoAnimationManager::Character g_characters[47];
 // Slightly larger than NPC_ANIM_PROXIMITY to catch transitions
 static constexpr float NPC_ANIM_NEARBY_RADIUS_SQ =
 	(Animation::NPC_ANIM_PROXIMITY + 5.0f) * (Animation::NPC_ANIM_PROXIMITY + 5.0f);
+
+static void ExtractSlotPeerIds(const AnimUpdateMsg& p_msg, uint32_t p_out[8])
+{
+	for (uint8_t i = 0; i < 8; i++) {
+		p_out[i] = (i < p_msg.slotCount) ? p_msg.slots[i].peerId : 0;
+	}
+}
 
 template <typename T>
 void NetworkManager::SendMessage(const T& p_msg)
@@ -137,7 +143,6 @@ MxResult NetworkManager::Tickle()
 			const float* pos = userActor->GetROI()->GetWorldPosition();
 			if (m_locationProximity.Update(pos[0], pos[2])) {
 				int16_t loc = m_locationProximity.GetNearestLocation();
-				SDL_Log("[Anim] Location changed: %d (%.1f units away)", loc, m_locationProximity.GetNearestDistance());
 				m_animStateDirty = true;
 
 				Animation::CoordinationState oldState = m_animCoordinator.GetState();
@@ -1363,9 +1368,7 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 	Animation::CoordinationState oldState = m_animCoordinator.GetState();
 
 	uint32_t slots[8];
-	for (uint8_t i = 0; i < 8; i++) {
-		slots[i] = (i < p_msg.slotCount) ? p_msg.slots[i].peerId : 0;
-	}
+	ExtractSlotPeerIds(p_msg, slots);
 
 	m_animCoordinator.ApplySessionUpdate(p_msg.animIndex, p_msg.state, p_msg.countdownMs, slots, p_msg.slotCount);
 
@@ -1425,7 +1428,6 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 
 	ThirdPersonCamera::Controller* cam = GetCamera();
 	if (!cam || !cam->GetDisplayROI()) {
-		SDL_Log("[Anim] Cannot play anim %d: no display ROI", p_animIndex);
 		abortSession();
 		return;
 	}
@@ -1434,7 +1436,6 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 	m_scenePlayer.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
 
 	if (!m_scenePlayer.IsPlaying()) {
-		SDL_Log("[Anim] ScenePlayer.Play() failed for anim %d", p_animIndex);
 		cam->SetAnimPlaying(false);
 		abortSession();
 		return;
@@ -1444,10 +1445,10 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 	m_animStateDirty = true;
 }
 
-void NetworkManager::BroadcastAnimUpdate(uint16_t p_animIndex)
+AnimUpdateMsg NetworkManager::BuildAnimUpdateMsg(uint16_t p_animIndex, uint32_t p_target)
 {
 	AnimUpdateMsg msg{};
-	msg.header = {MSG_ANIM_UPDATE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = {MSG_ANIM_UPDATE, m_localPeerId, m_sequence++, p_target};
 	msg.animIndex = p_animIndex;
 
 	const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
@@ -1459,45 +1460,24 @@ void NetworkManager::BroadcastAnimUpdate(uint16_t p_animIndex)
 			msg.slots[i].peerId = session->slots[i].peerId;
 		}
 	}
-	else {
-		// Session was destroyed — send cleared state
-		msg.state = 0;
-		msg.countdownMs = 0;
-		msg.slotCount = 0;
-	}
+	// else: zero-initialized = cleared state
+	return msg;
+}
 
+void NetworkManager::BroadcastAnimUpdate(uint16_t p_animIndex)
+{
+	AnimUpdateMsg msg = BuildAnimUpdateMsg(p_animIndex, TARGET_BROADCAST);
 	SendMessage(msg);
 
 	// Also update local coordinator
 	uint32_t slots[8];
-	for (uint8_t i = 0; i < 8; i++) {
-		slots[i] = (i < msg.slotCount) ? msg.slots[i].peerId : 0;
-	}
+	ExtractSlotPeerIds(msg, slots);
 	m_animCoordinator.ApplySessionUpdate(msg.animIndex, msg.state, msg.countdownMs, slots, msg.slotCount);
 }
 
 void NetworkManager::SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_targetPeerId)
 {
-	AnimUpdateMsg msg{};
-	msg.header = {MSG_ANIM_UPDATE, m_localPeerId, m_sequence++, p_targetPeerId};
-	msg.animIndex = p_animIndex;
-
-	const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
-	if (session) {
-		msg.state = static_cast<uint8_t>(session->state);
-		msg.countdownMs = Animation::SessionHost::ComputeCountdownMs(*session, SDL_GetTicks());
-		msg.slotCount = static_cast<uint8_t>(session->slots.size() < 8 ? session->slots.size() : 8);
-		for (uint8_t i = 0; i < msg.slotCount; i++) {
-			msg.slots[i].peerId = session->slots[i].peerId;
-		}
-	}
-	else {
-		msg.state = 0;
-		msg.countdownMs = 0;
-		msg.slotCount = 0;
-	}
-
-	SendMessage(msg);
+	SendMessage(BuildAnimUpdateMsg(p_animIndex, p_targetPeerId));
 }
 
 void NetworkManager::BroadcastAnimStart(uint16_t p_animIndex)

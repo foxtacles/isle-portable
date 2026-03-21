@@ -3,7 +3,6 @@
 #include "extensions/multiplayer/animation/catalog.h"
 #include "extensions/multiplayer/animation/coordinator.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_timer.h>
 
 using namespace Multiplayer::Animation;
@@ -225,7 +224,6 @@ void SessionHost::StartCountdown(uint16_t p_animIndex)
 	if (it != m_sessions.end() && it->second.state == CoordinationState::e_interested) {
 		it->second.state = CoordinationState::e_countdown;
 		it->second.countdownEndTime = SDL_GetTicks() + COUNTDOWN_DURATION_MS;
-		SDL_Log("[SessionHost] Starting countdown for anim %d", p_animIndex);
 	}
 }
 
@@ -235,7 +233,6 @@ void SessionHost::RevertCountdown(uint16_t p_animIndex)
 	if (it != m_sessions.end() && it->second.state == CoordinationState::e_countdown) {
 		it->second.state = CoordinationState::e_interested;
 		it->second.countdownEndTime = 0;
-		SDL_Log("[SessionHost] Reverted countdown for anim %d (participants separated)", p_animIndex);
 	}
 }
 
@@ -244,7 +241,6 @@ uint16_t SessionHost::Tick(uint32_t p_now)
 	for (auto& [animIndex, session] : m_sessions) {
 		if (session.state == CoordinationState::e_countdown && p_now >= session.countdownEndTime) {
 			session.state = CoordinationState::e_playing;
-			SDL_Log("[SessionHost] Countdown expired for anim %d", animIndex);
 			return animIndex;
 		}
 	}

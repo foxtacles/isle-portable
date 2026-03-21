@@ -243,15 +243,7 @@ void Controller::Tick(float p_deltaTime)
 				float timeInCycle =
 					m_animator.GetAnimTime() - duration * SDL_floorf(m_animator.GetAnimTime() / duration);
 
-				LegoTreeNode* root = m_animator.GetRideAnim()->GetRoot();
-				for (LegoU32 i = 0; i < root->GetNumChildren(); i++) {
-					LegoROI::ApplyAnimationTransformation(
-						root->GetChild(i),
-						transform,
-						(LegoTime) timeInCycle,
-						m_animator.GetRideRoiMap()
-					);
-				}
+				AnimUtils::ApplyTree(m_animator.GetRideAnim(), transform, (LegoTime) timeInCycle, m_animator.GetRideRoiMap());
 			}
 		}
 		return;

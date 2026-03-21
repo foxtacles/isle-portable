@@ -136,6 +136,7 @@ private:
 	void HandleAnimUpdate(const AnimUpdateMsg& p_msg);
 	void HandleAnimStart(const AnimStartMsg& p_msg);
 	void HandleAnimStartLocally(uint16_t p_animIndex);
+	AnimUpdateMsg BuildAnimUpdateMsg(uint16_t p_animIndex, uint32_t p_target);
 	void BroadcastAnimUpdate(uint16_t p_animIndex);
 	void SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_targetPeerId);
 	void BroadcastAnimStart(uint16_t p_animIndex);
