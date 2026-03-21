@@ -25,6 +25,9 @@ static const uint8_t ALL_CORE_ACTORS_MASK = (1 << CORE_CHARACTER_COUNT) - 1;
 // Sentinel value for "no animation selected"
 static const uint16_t ANIM_INDEX_NONE = 0xFFFF;
 
+// Extract the character indices from a performer bitmask.
+std::vector<int8_t> GetPerformerIndices(uint64_t p_performerMask);
+
 struct CatalogEntry {
 	uint16_t animIndex; // Index into LegoAnimationManager::m_anims[]
 	AnimCategory category;
@@ -62,6 +65,10 @@ public:
 		uint64_t* p_filledPerformers,
 		bool* p_spectatorFilled
 	) const;
+
+	// Check if the spectator mask allows this character to spectate.
+	// Does NOT check performer exclusion — caller must do that if needed.
+	static bool CheckSpectatorMask(const CatalogEntry* p_entry, int8_t p_charIndex);
 
 	// Convert a display actor index to the g_characters[] index used by animations.
 	// Returns -1 if no match.

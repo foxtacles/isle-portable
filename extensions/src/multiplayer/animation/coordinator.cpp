@@ -57,17 +57,12 @@ static void BuildSlots(
 )
 {
 	// One slot per performer bit in performerMask
-	for (int8_t i = 0; i < 64; i++) {
-		uint64_t bit = uint64_t(1) << i;
-		if (!(p_entry->performerMask & bit)) {
-			continue;
-		}
-
+	for (int8_t i : GetPerformerIndices(p_entry->performerMask)) {
 		SlotInfo slot;
 		if (i < (int8_t) sizeOfArray(g_characters)) {
 			slot.names.push_back(g_characters[i].m_name);
 		}
-		slot.filled = (p_filledPerformers & bit) != 0;
+		slot.filled = (p_filledPerformers & (uint64_t(1) << i)) != 0;
 		p_slots.push_back(std::move(slot));
 	}
 

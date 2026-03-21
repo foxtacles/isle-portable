@@ -108,29 +108,37 @@ Loader::~Loader()
 	delete m_siFile;
 }
 
+bool Loader::OpenSIHeaderOnly(const char* p_siPath, si::File*& p_file, si::Interleaf*& p_interleaf)
+{
+	p_file = new si::File();
+
+	MxString path;
+	if (!Extensions::Common::ResolveGamePath(p_siPath, path) || !p_file->Open(path.GetData(), si::File::Read)) {
+		delete p_file;
+		p_file = nullptr;
+		return false;
+	}
+
+	p_interleaf = new si::Interleaf();
+	if (p_interleaf->Read(p_file, si::Interleaf::HeaderOnly) != si::Interleaf::ERROR_SUCCESS) {
+		delete p_interleaf;
+		p_interleaf = nullptr;
+		p_file->Close();
+		delete p_file;
+		p_file = nullptr;
+		return false;
+	}
+
+	return true;
+}
+
 bool Loader::OpenSI()
 {
 	if (m_siReady) {
 		return true;
 	}
 
-	m_siFile = new si::File();
-
-	MxString path;
-	if (!Extensions::Common::ResolveGamePath("\\lego\\scripts\\isle\\isle.si", path) ||
-		!m_siFile->Open(path.GetData(), si::File::Read)) {
-		delete m_siFile;
-		m_siFile = nullptr;
-		return false;
-	}
-
-	m_interleaf = new si::Interleaf();
-	if (m_interleaf->Read(m_siFile, si::Interleaf::HeaderOnly) != si::Interleaf::ERROR_SUCCESS) {
-		delete m_interleaf;
-		m_interleaf = nullptr;
-		m_siFile->Close();
-		delete m_siFile;
-		m_siFile = nullptr;
+	if (!OpenSIHeaderOnly("\\lego\\scripts\\isle\\isle.si", m_siFile, m_interleaf)) {
 		return false;
 	}
 
@@ -406,20 +414,10 @@ Loader::PreloadThread::PreloadThread(Loader* p_loader, uint32_t p_objectId) : m_
 
 MxResult Loader::PreloadThread::Run()
 {
-	si::File* siFile = new si::File();
+	si::File* siFile = nullptr;
+	si::Interleaf* interleaf = nullptr;
 
-	MxString path;
-	if (!Extensions::Common::ResolveGamePath("\\lego\\scripts\\isle\\isle.si", path) ||
-		!siFile->Open(path.GetData(), si::File::Read)) {
-		delete siFile;
-		m_loader->m_preloadDone = true;
-		return MxThread::Run();
-	}
-
-	si::Interleaf* interleaf = new si::Interleaf();
-	if (interleaf->Read(siFile, si::Interleaf::HeaderOnly) != si::Interleaf::ERROR_SUCCESS) {
-		delete interleaf;
-		delete siFile;
+	if (!OpenSIHeaderOnly("\\lego\\scripts\\isle\\isle.si", siFile, interleaf)) {
 		m_loader->m_preloadDone = true;
 		return MxThread::Run();
 	}

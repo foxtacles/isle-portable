@@ -38,6 +38,9 @@ extern LegoAnimationManager::Character g_characters[47];
 static constexpr float NPC_ANIM_NEARBY_RADIUS_SQ =
 	(Animation::NPC_ANIM_PROXIMITY + 5.0f) * (Animation::NPC_ANIM_PROXIMITY + 5.0f);
 
+static const char* IDLE_ANIM_STATE_JSON =
+	"{\"location\":-1,\"state\":0,\"currentAnimIndex\":65535,\"pendingInterest\":-1,\"animations\":[]}";
+
 static void ExtractSlotPeerIds(const AnimUpdateMsg& p_msg, uint32_t p_out[8])
 {
 	for (uint8_t i = 0; i < 8; i++) {
@@ -1830,9 +1833,7 @@ void NetworkManager::PushAnimationState()
 	if (!cam || !cam->GetDisplayROI()) {
 		// Camera unavailable — push idle state so the frontend clears any countdown/session UI
 		if (m_callbacks) {
-			m_callbacks->OnAnimationsAvailable(
-				"{\"location\":-1,\"state\":0,\"currentAnimIndex\":65535,\"pendingInterest\":-1,\"animations\":[]}"
-			);
+			m_callbacks->OnAnimationsAvailable(IDLE_ANIM_STATE_JSON);
 		}
 		return;
 	}
@@ -1843,6 +1844,9 @@ void NetworkManager::PushAnimationState()
 
 	LegoPathActor* userActor = UserActor();
 	if (!userActor || !userActor->GetROI()) {
+		if (m_callbacks) {
+			m_callbacks->OnAnimationsAvailable(IDLE_ANIM_STATE_JSON);
+		}
 		return;
 	}
 	const float* localPos = userActor->GetROI()->GetWorldPosition();
@@ -1864,6 +1868,8 @@ void NetworkManager::PushAnimationState()
 		if (player->GetNearestLocation() == location) {
 			locationCharIndices.push_back(charIdx);
 		}
+		// Exact NPC_ANIM_PROXIMITY radius for triggering eligibility
+		// (tighter than IsPeerNearby's NPC_ANIM_NEARBY_RADIUS_SQ used for session visibility)
 		const float* rpos = player->GetROI()->GetWorldPosition();
 		float dx = rpos[0] - localX;
 		float dz = rpos[2] - localZ;

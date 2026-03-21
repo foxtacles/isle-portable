@@ -19,6 +19,7 @@
 #include <SDL3/SDL_timer.h>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <vector>
 
@@ -77,7 +78,7 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo)
 	LegoU32 numActors = m_currentData->anim->GetNumActors();
 	std::vector<LegoROI*> createdROIs;
 	std::vector<AnimUtils::ROIAlias> aliases;
-	std::vector<std::string> aliasNames;
+	std::deque<std::string> aliasNames;
 
 	std::vector<bool> participantMatched(m_participants.size(), false);
 

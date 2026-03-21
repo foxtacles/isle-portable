@@ -92,6 +92,7 @@ private:
 		uint32_t m_objectId;
 	};
 
+	static bool OpenSIHeaderOnly(const char* p_siPath, si::File*& p_file, si::Interleaf*& p_interleaf);
 	bool ReadObject(uint32_t p_objectId);
 	static bool ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data);
 	static bool ParseSoundChild(si::Object* p_child, SceneAnimData& p_data);

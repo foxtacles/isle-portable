@@ -26,6 +26,17 @@ static int8_t GetCharacterIndex(const char* p_name)
 	return -1;
 }
 
+std::vector<int8_t> Multiplayer::Animation::GetPerformerIndices(uint64_t p_performerMask)
+{
+	std::vector<int8_t> indices;
+	for (int8_t i = 0; i < 64; i++) {
+		if (p_performerMask & (uint64_t(1) << i)) {
+			indices.push_back(i);
+		}
+	}
+	return indices;
+}
+
 void Catalog::Refresh(LegoAnimationManager* p_am)
 {
 	m_entries.clear();
@@ -141,9 +152,7 @@ std::vector<const CatalogEntry*> Catalog::GetAnimationsAtLocation(int16_t p_loca
 	return result;
 }
 
-// Check if the spectator mask allows this character to spectate.
-// Does NOT check performer exclusion — caller must do that if needed.
-static bool CheckSpectatorMask(const CatalogEntry* p_entry, int8_t p_charIndex)
+bool Catalog::CheckSpectatorMask(const CatalogEntry* p_entry, int8_t p_charIndex)
 {
 	if (p_charIndex < CORE_CHARACTER_COUNT) {
 		return (p_entry->spectatorMask >> p_charIndex) & 1;
@@ -185,7 +194,7 @@ bool Catalog::CanTrigger(
 	*p_spectatorFilled = false;
 
 	// First pass: assign performers (each performer slot needs exactly one player)
-	bool assignedAsPerformer[256] = {};
+	std::vector<bool> assignedAsPerformer(p_count, false);
 
 	for (uint8_t i = 0; i < p_count; i++) {
 		int8_t charIndex = p_charIndices[i];

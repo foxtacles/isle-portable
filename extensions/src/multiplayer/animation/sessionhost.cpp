@@ -29,12 +29,7 @@ AnimSession SessionHost::CreateSession(const CatalogEntry* p_entry, uint16_t p_a
 	session.state = CoordinationState::e_interested;
 	session.countdownEndTime = 0;
 
-	for (int8_t i = 0; i < 64; i++) {
-		uint64_t bit = uint64_t(1) << i;
-		if (!(p_entry->performerMask & bit)) {
-			continue;
-		}
-
+	for (int8_t i : GetPerformerIndices(p_entry->performerMask)) {
 		SessionSlot slot;
 		slot.peerId = 0;
 		slot.charIndex = i;
@@ -77,18 +72,10 @@ bool SessionHost::TryAssignSlot(AnimSession& p_session, uint32_t p_peerId, int8_
 
 	for (auto& slot : p_session.slots) {
 		if (slot.IsSpectator() && slot.peerId == 0) {
-			if (p_charIndex >= 0 && !((entry->performerMask >> p_charIndex) & 1)) {
-				bool allowed = false;
-				if (p_charIndex < CORE_CHARACTER_COUNT) {
-					allowed = ((entry->spectatorMask >> p_charIndex) & 1) != 0;
-				}
-				else {
-					allowed = (entry->spectatorMask == ALL_CORE_ACTORS_MASK);
-				}
-				if (allowed) {
-					slot.peerId = p_peerId;
-					return true;
-				}
+			if (p_charIndex >= 0 && !((entry->performerMask >> p_charIndex) & 1) &&
+				Catalog::CheckSpectatorMask(entry, p_charIndex)) {
+				slot.peerId = p_peerId;
+				return true;
 			}
 			break;
 		}
@@ -314,12 +301,7 @@ std::vector<int8_t> SessionHost::ComputeSlotCharIndices(const CatalogEntry* p_en
 	}
 
 	// Performers: one slot per set bit in performerMask (same order as CreateSession)
-	for (int8_t i = 0; i < 64; i++) {
-		uint64_t bit = uint64_t(1) << i;
-		if (p_entry->performerMask & bit) {
-			indices.push_back(i);
-		}
-	}
+	indices = GetPerformerIndices(p_entry->performerMask);
 
 	// Spectator slot last
 	indices.push_back(-1);
