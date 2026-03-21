@@ -12,21 +12,40 @@
 
 using namespace Multiplayer::Animation;
 
-void PhonemePlayer::Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI)
+// Find the ROI matching a phoneme track's roiName in the roiMap.
+static LegoROI* FindTrackROI(const std::string& p_roiName, LegoROI** p_roiMap, MxU32 p_roiMapSize)
+{
+	if (p_roiName.empty() || !p_roiMap) {
+		return nullptr;
+	}
+
+	for (MxU32 i = 1; i < p_roiMapSize; i++) {
+		if (p_roiMap[i] && p_roiMap[i]->GetName() && !SDL_strcasecmp(p_roiName.c_str(), p_roiMap[i]->GetName())) {
+			return p_roiMap[i];
+		}
+	}
+	return nullptr;
+}
+
+void PhonemePlayer::Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI** p_roiMap, MxU32 p_roiMapSize)
 {
 	for (auto& track : p_tracks) {
 		PhonemeState state;
+		state.targetROI = nullptr;
 		state.originalTexture = nullptr;
 		state.cachedTexture = nullptr;
 		state.bitmap = nullptr;
 		state.currentFrame = -1;
 
-		if (!p_executingROI) {
+		// Resolve the target ROI from the track's roiName via the roiMap
+		LegoROI* targetROI = FindTrackROI(track.roiName, p_roiMap, p_roiMapSize);
+		if (!targetROI) {
 			m_states.push_back(state);
 			continue;
 		}
+		state.targetROI = targetROI;
 
-		LegoROI* head = p_executingROI->FindChildROI("head", p_executingROI);
+		LegoROI* head = targetROI->FindChildROI("head", targetROI);
 		if (!head) {
 			m_states.push_back(state);
 			continue;
@@ -47,7 +66,7 @@ void PhonemePlayer::Init(const std::vector<SceneAnimData::PhonemeTrack>& p_track
 		}
 		state.cachedTexture = cached;
 
-		CharacterManager()->SetHeadTexture(p_executingROI, cached);
+		CharacterManager()->SetHeadTexture(targetROI, cached);
 
 		state.bitmap = new MxBitmap();
 		state.bitmap->SetSize(track.width, track.height, NULL, FALSE);
@@ -131,19 +150,15 @@ void PhonemePlayer::Tick(float p_elapsedMs, const std::vector<SceneAnimData::Pho
 	}
 }
 
-void PhonemePlayer::Cleanup(LegoROI* p_executingROI)
+void PhonemePlayer::Cleanup()
 {
 	for (size_t i = 0; i < m_states.size(); i++) {
 		auto& state = m_states[i];
 
-		if (p_executingROI && state.originalTexture) {
-			// Restore original head texture by passing the saved original.
-			// We can't pass NULL because SetHeadTexture(NULL) uses
-			// GetActorInfo(roi->GetName()) which won't find our display ROI.
-			CharacterManager()->SetHeadTexture(p_executingROI, state.originalTexture);
+		if (state.targetROI && state.originalTexture) {
+			CharacterManager()->SetHeadTexture(state.targetROI, state.originalTexture);
 		}
 
-		// Only erase the cached copy, NOT the original texture.
 		if (state.cachedTexture) {
 			TextureContainer()->EraseCached(state.cachedTexture);
 		}

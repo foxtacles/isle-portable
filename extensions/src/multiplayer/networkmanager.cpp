@@ -1200,7 +1200,11 @@ void NetworkManager::TickAnimation(float p_deltaTime)
 	m_scenePlayer.Tick(p_deltaTime);
 
 	if (!m_scenePlayer.IsPlaying()) {
-		// Animation finished
+		// Animation finished — unlock all remote players
+		for (auto& [peerId, player] : m_remotePlayers) {
+			player->SetAnimationLocked(false);
+		}
+
 		ThirdPersonCamera::Controller* cam = GetCamera();
 		if (cam) {
 			cam->SetAnimPlaying(false);
@@ -1382,6 +1386,9 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 		m_animCoordinator.GetState() == Animation::CoordinationState::e_idle) {
 		if (m_scenePlayer.IsPlaying()) {
 			m_scenePlayer.Stop();
+			for (auto& [peerId, player] : m_remotePlayers) {
+				player->SetAnimationLocked(false);
+			}
 			ThirdPersonCamera::Controller* cam = GetCamera();
 			if (cam) {
 				cam->SetAnimPlaying(false);
@@ -1426,17 +1433,91 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 		return;
 	}
 
+	const Animation::CatalogEntry* entry = m_animCatalog.FindEntry(p_animIndex);
+	if (!entry) {
+		abortSession();
+		return;
+	}
+
 	ThirdPersonCamera::Controller* cam = GetCamera();
 	if (!cam || !cam->GetDisplayROI()) {
 		abortSession();
 		return;
 	}
 
-	cam->SetAnimPlaying(true, [this]() { m_scenePlayer.Stop(); });
-	m_scenePlayer.Play(animInfo, cam->GetDisplayROI(), cam->GetRideVehicleROI());
+	// Gather slot→ROI mappings from the session
+	const Animation::SessionView* view = m_animCoordinator.GetSessionView(p_animIndex);
+	std::vector<int8_t> slotChars = Animation::SessionHost::ComputeSlotCharIndices(entry);
+
+	std::vector<Animation::ParticipantROI> participants;
+	if (view) {
+		uint8_t count = view->slotCount < (uint8_t) slotChars.size() ? view->slotCount : (uint8_t) slotChars.size();
+		for (uint8_t i = 0; i < count; i++) {
+			uint32_t peerId = view->peerSlots[i];
+			if (peerId == 0 || peerId == m_localPeerId) {
+				continue;
+			}
+
+			auto it = m_remotePlayers.find(peerId);
+			if (it == m_remotePlayers.end() || !it->second->GetROI()) {
+				continue;
+			}
+
+			Animation::ParticipantROI rp;
+			rp.roi = it->second->GetROI();
+			rp.charIndex = slotChars[i];
+			rp.isSpectator = (slotChars[i] == -1);
+			participants.push_back(rp);
+
+			// Lock performers to prevent network updates from fighting animation.
+			// Spectators keep their normal idle animation.
+			if (!rp.isSpectator) {
+				it->second->SetAnimationLocked(true);
+			}
+		}
+	}
+
+	// Determine local player's role
+	int8_t localCharIndex = -1;
+	bool localIsSpectator = true;
+	if (view) {
+		uint8_t count = view->slotCount < (uint8_t) slotChars.size() ? view->slotCount : (uint8_t) slotChars.size();
+		for (uint8_t i = 0; i < count; i++) {
+			if (view->peerSlots[i] == m_localPeerId) {
+				localCharIndex = slotChars[i];
+				localIsSpectator = (slotChars[i] == -1);
+				break;
+			}
+		}
+	}
+
+	// Add local player to participants so ScenePlayer knows their role
+	{
+		Animation::ParticipantROI local;
+		local.roi = cam->GetDisplayROI();
+		local.charIndex = localCharIndex;
+		local.isSpectator = localIsSpectator;
+		participants.insert(participants.begin(), local);
+	}
+
+	// lockDisplay=true for performers (ScenePlayer drives their ROI),
+	// false for spectators (they keep idling, just can't move)
+	cam->SetAnimPlaying(true, !localIsSpectator, [this]() { m_scenePlayer.Stop(); });
+	m_scenePlayer.Play(
+		animInfo,
+		entry->category,
+		cam->GetDisplayROI(),
+		cam->GetRideVehicleROI(),
+		participants.data(),
+		(uint8_t) participants.size()
+	);
 
 	if (!m_scenePlayer.IsPlaying()) {
 		cam->SetAnimPlaying(false);
+		// Unlock remote players on failure
+		for (auto& [peerId, player] : m_remotePlayers) {
+			player->SetAnimationLocked(false);
+		}
 		abortSession();
 		return;
 	}

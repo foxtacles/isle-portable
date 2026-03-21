@@ -59,12 +59,18 @@ public:
 	bool IsInVehicle() const { return m_animator.IsInVehicle(); }
 	LegoROI* GetRideVehicleROI() const { return m_animator.GetRideVehicleROI(); }
 
-	// Signal that an external animation is controlling the display ROI.
-	// p_onStop is called before the display ROI is destroyed (Deactivate/OnWorldDisabled)
-	// to allow the caller to clean up animation resources.
-	void SetAnimPlaying(bool p_animPlaying, std::function<void()> p_animStopCallback = nullptr)
+	// Signal that an external animation is active.
+	// p_lockDisplay: true if the display ROI is being driven by the animation (performer),
+	//                false if the local player is just spectating (idle anim continues).
+	// p_onStop is called before the display ROI is destroyed (Deactivate/OnWorldDisabled).
+	void SetAnimPlaying(
+		bool p_animPlaying,
+		bool p_lockDisplay = true,
+		std::function<void()> p_animStopCallback = nullptr
+	)
 	{
 		m_animPlaying = p_animPlaying;
+		m_animLockDisplay = p_animPlaying && p_lockDisplay;
 		m_animStopCallback = p_animPlaying ? std::move(p_animStopCallback) : nullptr;
 	}
 	bool IsAnimPlaying() const { return m_animPlaying; }
@@ -132,6 +138,7 @@ private:
 	bool m_active;
 	bool m_pendingWorldTransition;
 	bool m_animPlaying;
+	bool m_animLockDisplay;
 	std::function<void()> m_animStopCallback;
 	bool m_lmbForwardEngaged;
 	LegoROI* m_playerROI;

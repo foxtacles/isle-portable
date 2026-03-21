@@ -23,12 +23,25 @@ using namespace Extensions::Common;
 //    presenter action context (m_action->GetUnknown24()). We search created extra
 //    ROIs directly.
 // 3. No LegoAnimStructMap dedup -- sequential indices, functionally correct.
+// Look up an animation node name in the alias map (case-insensitive).
+static LegoROI* FindAlias(const char* p_name, const AnimUtils::ROIAlias* p_aliases, int p_aliasCount)
+{
+	for (int i = 0; i < p_aliasCount; i++) {
+		if (p_aliases[i].animName && !SDL_strcasecmp(p_name, p_aliases[i].animName)) {
+			return p_aliases[i].roi;
+		}
+	}
+	return nullptr;
+}
+
 static void AssignROIIndices(
 	LegoTreeNode* p_node,
 	LegoROI* p_parentROI,
 	LegoROI* p_rootROI,
 	LegoROI** p_extraROIs,
 	int p_extraROICount,
+	const AnimUtils::ROIAlias* p_aliases,
+	int p_aliasCount,
 	MxU32& p_nextIndex,
 	std::vector<LegoROI*>& p_entries,
 	bool& p_rootClaimed
@@ -44,12 +57,22 @@ static void AssignROIIndices(
 		if (*name == '*' || p_parentROI == nullptr) {
 			roi = p_rootROI;
 
-			// Before claiming root, check if this node matches an extra ROI.
-			// This handles cases like BIKESY appearing before SY in the tree:
-			// BIKESY should match the vehicle extra, not claim the root.
 			const char* searchName = (*name == '*') ? name + 1 : name;
 			bool matchedExtra = false;
-			if (p_extraROICount > 0) {
+
+			// Check aliases first (participant ROIs mapped by character name).
+			// Claiming root prevents subsequent sibling nodes from also claiming it.
+			matchedROI = FindAlias(searchName, p_aliases, p_aliasCount);
+			if (matchedROI) {
+				roi = matchedROI;
+				matchedExtra = true;
+				p_rootClaimed = true;
+			}
+
+			// Then check extra ROIs by name.
+			// This handles cases like BIKESY appearing before SY in the tree:
+			// BIKESY should match the vehicle extra, not claim the root.
+			if (!matchedExtra && p_extraROICount > 0) {
 				for (int e = 0; e < p_extraROICount; e++) {
 					matchedROI = p_extraROIs[e]->FindChildROI(searchName, p_extraROIs[e]);
 					if (matchedROI != nullptr) {
@@ -70,11 +93,48 @@ static void AssignROIIndices(
 		else {
 			matchedROI = p_parentROI->FindChildROI(name, p_parentROI);
 			if (matchedROI == nullptr) {
+				// Check aliases — also update roi so children resolve against the alias ROI
+				matchedROI = FindAlias(name, p_aliases, p_aliasCount);
+				if (matchedROI) {
+					roi = matchedROI;
+				}
+			}
+			if (matchedROI == nullptr) {
 				for (int e = 0; e < p_extraROICount; e++) {
 					matchedROI = p_extraROIs[e]->FindChildROI(name, p_extraROIs[e]);
 					if (matchedROI != nullptr) {
 						break;
 					}
+				}
+			}
+			// Mirrors original game (legoanimpresenter.cpp:486-490):
+			// If FindChildROI fails, the node might be a top-level actor that isn't
+			// a child of the current parent. Re-run this node with p_parentROI=NULL
+			// so it enters the root-claiming / top-level search path instead.
+			if (matchedROI == nullptr) {
+				bool isTopLevel = false;
+				// Check aliases for top-level match
+				if (FindAlias(name, p_aliases, p_aliasCount) != nullptr) {
+					isTopLevel = true;
+				}
+				if (!isTopLevel && !p_rootClaimed && p_rootROI->GetName() &&
+					!SDL_strcasecmp(name, p_rootROI->GetName())) {
+					isTopLevel = true;
+				}
+				if (!isTopLevel) {
+					for (int e = 0; e < p_extraROICount; e++) {
+						if (p_extraROIs[e]->GetName() && !SDL_strcasecmp(name, p_extraROIs[e]->GetName())) {
+							isTopLevel = true;
+							break;
+						}
+					}
+				}
+				if (isTopLevel) {
+					AssignROIIndices(
+						p_node, nullptr, p_rootROI, p_extraROIs, p_extraROICount,
+						p_aliases, p_aliasCount, p_nextIndex, p_entries, p_rootClaimed
+					);
+					return;
 				}
 			}
 		}
@@ -96,6 +156,8 @@ static void AssignROIIndices(
 			p_rootROI,
 			p_extraROIs,
 			p_extraROICount,
+			p_aliases,
+			p_aliasCount,
 			p_nextIndex,
 			p_entries,
 			p_rootClaimed
@@ -109,7 +171,9 @@ void AnimUtils::BuildROIMap(
 	LegoROI** p_extraROIs,
 	int p_extraROICount,
 	LegoROI**& p_roiMap,
-	MxU32& p_roiMapSize
+	MxU32& p_roiMapSize,
+	const ROIAlias* p_aliases,
+	int p_aliasCount
 )
 {
 	if (!p_anim || !p_rootROI) {
@@ -124,7 +188,7 @@ void AnimUtils::BuildROIMap(
 	MxU32 nextIndex = 1;
 	std::vector<LegoROI*> entries;
 	bool rootClaimed = false;
-	AssignROIIndices(root, nullptr, p_rootROI, p_extraROIs, p_extraROICount, nextIndex, entries, rootClaimed);
+	AssignROIIndices(root, nullptr, p_rootROI, p_extraROIs, p_extraROICount, p_aliases, p_aliasCount, nextIndex, entries, rootClaimed);
 
 	if (entries.empty()) {
 		return;

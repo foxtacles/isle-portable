@@ -13,6 +13,7 @@ namespace Multiplayer::Animation
 {
 
 struct PhonemeState {
+	LegoROI* targetROI;
 	LegoTextureInfo* originalTexture;
 	LegoTextureInfo* cachedTexture;
 	MxBitmap* bitmap;
@@ -21,9 +22,9 @@ struct PhonemeState {
 
 class PhonemePlayer {
 public:
-	void Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI* p_executingROI);
+	void Init(const std::vector<SceneAnimData::PhonemeTrack>& p_tracks, LegoROI** p_roiMap, MxU32 p_roiMapSize);
 	void Tick(float p_elapsedMs, const std::vector<SceneAnimData::PhonemeTrack>& p_tracks);
-	void Cleanup(LegoROI* p_executingROI);
+	void Cleanup();
 
 private:
 	std::vector<PhonemeState> m_states;

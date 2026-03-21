@@ -55,6 +55,12 @@ public:
 	// Compute countdownMs remaining for a session
 	static uint16_t ComputeCountdownMs(const AnimSession& p_session, uint32_t p_now);
 
+	// Reconstruct slot charIndex assignments from CatalogEntry::performerMask.
+	// Same iteration order as CreateSession: bit 0 first, then bit 1, ...,
+	// spectator last with charIndex=-1. Both host and client have the same
+	// CatalogEntry, so this is deterministic without protocol changes.
+	static std::vector<int8_t> ComputeSlotCharIndices(const CatalogEntry* p_entry);
+
 	// Returns true if any session is in countdown state
 	bool HasCountdownSession() const;
 

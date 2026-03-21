@@ -46,6 +46,17 @@ struct SceneAnimData {
 	};
 	std::vector<PhonemeTrack> phonemeTracks;
 
+	// Action location/direction/up from SI metadata (same fields the original
+	// game reads via m_action->GetLocation/Direction/Up in StartingTickle)
+	float actionLocation[3];
+	float actionDirection[3];
+	float actionUp[3];
+	bool hasActionTransform;
+
+	// Directives from SI "extra" field (parsed from LegoAnimPresenter child)
+	std::vector<std::string> ptAtCamNames; // ROI names from PTATCAM=name1:name2
+	bool hideOnStop = false;               // HIDE_ON_STOP directive
+
 	SceneAnimData();
 	~SceneAnimData();
 

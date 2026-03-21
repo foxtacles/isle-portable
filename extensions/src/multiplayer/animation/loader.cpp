@@ -6,15 +6,62 @@
 #include "misc/legostorage.h"
 #include "mxwavepresenter.h"
 
+#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <file.h>
 #include <interleaf.h>
 
 using namespace Multiplayer::Animation;
 
-SceneAnimData::SceneAnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f)
+// Parse animation directives from SI "extra" field.
+// Mirrors LegoAnimPresenter::ParseExtra() for the directives we need.
+static void ParseExtraDirectives(const si::bytearray& p_extra, SceneAnimData& p_data)
+{
+	if (p_extra.empty()) {
+		return;
+	}
+
+	// Convert to null-terminated string
+	std::string extra(p_extra.data(), p_extra.size());
+	while (!extra.empty() && extra.back() == '\0') {
+		extra.pop_back();
+	}
+
+	// HIDE_ON_STOP (presence check, no value needed)
+	if (extra.find("HIDE_ON_STOP") != std::string::npos) {
+		p_data.hideOnStop = true;
+	}
+
+	// PTATCAM=name1:name2:name3 (tokenize on :;)
+	size_t pos = extra.find("PTATCAM=");
+	if (pos != std::string::npos) {
+		pos += 8; // skip "PTATCAM="
+
+		// Find end of value (next space or end of string)
+		size_t end = extra.find(' ', pos);
+		std::string value = (end != std::string::npos) ? extra.substr(pos, end - pos) : extra.substr(pos);
+
+		// Tokenize on : and ;
+		size_t start = 0;
+		while (start < value.size()) {
+			size_t delim = value.find_first_of(":;", start);
+			std::string token = (delim != std::string::npos) ? value.substr(start, delim - start) : value.substr(start);
+
+			if (!token.empty()) {
+				p_data.ptAtCamNames.push_back(token);
+			}
+
+			start = (delim != std::string::npos) ? delim + 1 : value.size();
+		}
+	}
+}
+
+SceneAnimData::SceneAnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f), hasActionTransform(false), hideOnStop(false)
 {
 	centerPoint[0] = centerPoint[1] = centerPoint[2] = 0.0f;
+	actionLocation[0] = actionLocation[1] = actionLocation[2] = 0.0f;
+	actionDirection[0] = actionDirection[1] = actionDirection[2] = 0.0f;
+	actionUp[0] = actionUp[1] = actionUp[2] = 0.0f;
 }
 
 SceneAnimData::~SceneAnimData()
@@ -36,11 +83,16 @@ void SceneAnimData::ReleaseTracks()
 
 SceneAnimData::SceneAnimData(SceneAnimData&& p_other) noexcept
 	: anim(p_other.anim), duration(p_other.duration), boundingRadius(p_other.boundingRadius),
-	  audioTracks(std::move(p_other.audioTracks)), phonemeTracks(std::move(p_other.phonemeTracks))
+	  audioTracks(std::move(p_other.audioTracks)), phonemeTracks(std::move(p_other.phonemeTracks)),
+	  hasActionTransform(p_other.hasActionTransform),
+	  ptAtCamNames(std::move(p_other.ptAtCamNames)), hideOnStop(p_other.hideOnStop)
 {
 	centerPoint[0] = p_other.centerPoint[0];
 	centerPoint[1] = p_other.centerPoint[1];
 	centerPoint[2] = p_other.centerPoint[2];
+	SDL_memcpy(actionLocation, p_other.actionLocation, sizeof(actionLocation));
+	SDL_memcpy(actionDirection, p_other.actionDirection, sizeof(actionDirection));
+	SDL_memcpy(actionUp, p_other.actionUp, sizeof(actionUp));
 	p_other.anim = nullptr;
 }
 
@@ -58,6 +110,12 @@ SceneAnimData& SceneAnimData::operator=(SceneAnimData&& p_other) noexcept
 		centerPoint[2] = p_other.centerPoint[2];
 		audioTracks = std::move(p_other.audioTracks);
 		phonemeTracks = std::move(p_other.phonemeTracks);
+		hasActionTransform = p_other.hasActionTransform;
+		SDL_memcpy(actionLocation, p_other.actionLocation, sizeof(actionLocation));
+		SDL_memcpy(actionDirection, p_other.actionDirection, sizeof(actionDirection));
+		SDL_memcpy(actionUp, p_other.actionUp, sizeof(actionUp));
+		ptAtCamNames = std::move(p_other.ptAtCamNames);
+		hideOnStop = p_other.hideOnStop;
 		p_other.anim = nullptr;
 	}
 	return *this;
@@ -296,6 +354,45 @@ SceneAnimData* Loader::EnsureCached(uint32_t p_objectId)
 			if (!hasAnim) {
 				if (ParseAnimationChild(child, data)) {
 					hasAnim = true;
+					ParseExtraDirectives(child->extra_, data);
+
+					// Extract action location/direction/up — same fields the original
+					// game reads via m_action->GetLocation/Direction/Up in StartingTickle.
+					// Try the child first, fall back to the composite parent if zero.
+					si::Object* source = child;
+					if (SDL_fabs(child->direction_.x) < 1e-7 &&
+						SDL_fabs(child->direction_.y) < 1e-7 &&
+						SDL_fabs(child->direction_.z) < 1e-7) {
+						source = composite;
+					}
+
+					data.actionLocation[0] = (float) source->location_.x;
+					data.actionLocation[1] = (float) source->location_.y;
+					data.actionLocation[2] = (float) source->location_.z;
+					data.actionDirection[0] = (float) source->direction_.x;
+					data.actionDirection[1] = (float) source->direction_.y;
+					data.actionDirection[2] = (float) source->direction_.z;
+					data.actionUp[0] = (float) source->up_.x;
+					data.actionUp[1] = (float) source->up_.y;
+					data.actionUp[2] = (float) source->up_.z;
+
+					// Check if the action has a non-zero direction (same check as StartingTickle)
+					data.hasActionTransform =
+						(SDL_fabsf(data.actionDirection[0]) >= 0.00000047683716f ||
+						 SDL_fabsf(data.actionDirection[1]) >= 0.00000047683716f ||
+						 SDL_fabsf(data.actionDirection[2]) >= 0.00000047683716f);
+
+					SDL_Log(
+						"[Loader] anim objectId=%u child loc=(%.2f,%.2f,%.2f) dir=(%.2f,%.2f,%.2f) | "
+						"composite loc=(%.2f,%.2f,%.2f) dir=(%.2f,%.2f,%.2f) | using=%s hasTransform=%d",
+						p_objectId,
+						(float) child->location_.x, (float) child->location_.y, (float) child->location_.z,
+						(float) child->direction_.x, (float) child->direction_.y, (float) child->direction_.z,
+						(float) composite->location_.x, (float) composite->location_.y, (float) composite->location_.z,
+						(float) composite->direction_.x, (float) composite->direction_.y, (float) composite->direction_.z,
+						(source == composite) ? "composite" : "child",
+						(int) data.hasActionTransform
+					);
 				}
 			}
 		}

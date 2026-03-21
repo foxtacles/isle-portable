@@ -53,6 +53,9 @@ public:
 	bool IsMoving() const { return m_animator.IsInVehicle() || m_targetSpeed > 0.01f; }
 	bool IsInMultiPartEmote() const { return m_animator.IsInMultiPartEmote(); }
 
+	void SetAnimationLocked(bool p_locked) { m_animationLocked = p_locked; }
+	bool IsAnimationLocked() const { return m_animationLocked; }
+
 private:
 	const char* GetDisplayActorName() const;
 	void UpdateTransform(float p_deltaTime);
@@ -92,6 +95,7 @@ private:
 
 	Extensions::Common::CustomizeState m_customizeState;
 	bool m_allowRemoteCustomize;
+	bool m_animationLocked;
 };
 
 } // namespace Multiplayer

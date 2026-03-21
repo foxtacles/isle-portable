@@ -30,7 +30,8 @@ using namespace Extensions::ThirdPersonCamera;
 
 Controller::Controller()
 	: m_animator(CharacterAnimatorConfig{/*.saveEmoteTransform=*/true, /*.propSuffix=*/0}), m_enabled(false),
-	  m_active(false), m_pendingWorldTransition(false), m_animPlaying(false), m_lmbForwardEngaged(false),
+	  m_active(false), m_pendingWorldTransition(false), m_animPlaying(false), m_animLockDisplay(false),
+	  m_lmbForwardEngaged(false),
 	  m_playerROI(nullptr)
 {
 }
@@ -211,7 +212,7 @@ void Controller::Tick(float p_deltaTime)
 		}
 	}
 
-	if (!UserActor() || UserActor()->GetActorState() != LegoPathActor::c_disabled) {
+	if (!m_animPlaying && (!UserActor() || UserActor()->GetActorState() != LegoPathActor::c_disabled)) {
 		m_orbit.ApplyOrbitCamera();
 	}
 
@@ -254,12 +255,15 @@ void Controller::Tick(float p_deltaTime)
 		return;
 	}
 
-	// When an external animation is playing, it handles all ROI positioning.
-	// Skip sync, walk/idle/emote animation, and movement.
+	// When an external animation is playing, prevent movement.
+	// If the display ROI is being driven by the animation (performer), skip everything.
+	// If the local player is spectating, still sync + idle animate.
 	if (m_animPlaying) {
 		userActor->SetWorldSpeed(0.0f);
 		NavController()->SetLinearVel(0.0f);
-		return;
+		if (m_animLockDisplay) {
+			return;
+		}
 	}
 
 	// Sync display clone position from native ROI

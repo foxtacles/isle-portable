@@ -307,3 +307,24 @@ bool SessionHost::HasCountdownSession() const
 	}
 	return false;
 }
+
+std::vector<int8_t> SessionHost::ComputeSlotCharIndices(const CatalogEntry* p_entry)
+{
+	std::vector<int8_t> indices;
+	if (!p_entry) {
+		return indices;
+	}
+
+	// Performers: one slot per set bit in performerMask (same order as CreateSession)
+	for (int8_t i = 0; i < 64; i++) {
+		uint64_t bit = uint64_t(1) << i;
+		if (p_entry->performerMask & bit) {
+			indices.push_back(i);
+		}
+	}
+
+	// Spectator slot last
+	indices.push_back(-1);
+
+	return indices;
+}
