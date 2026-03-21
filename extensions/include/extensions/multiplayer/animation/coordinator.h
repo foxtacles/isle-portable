@@ -14,8 +14,7 @@ enum class CoordinationState : uint8_t {
 	e_idle,
 	e_interested,
 	e_countdown,
-	e_playing,
-	e_completed
+	e_playing
 };
 
 struct SlotInfo {
@@ -28,16 +27,17 @@ struct SlotInfo {
 
 struct EligibilityInfo {
 	uint16_t animIndex;
-	bool eligible;          // All requirements met: at location and all roles filled
-	bool atLocation;        // At the right location (or location == -1)
-	const CatalogEntry* entry; // Pointer into catalog (valid until next Refresh)
+	bool eligible;               // All requirements met: at location and all roles filled
+	bool atLocation;             // At the right location (or location == -1)
+	const CatalogEntry* entry;   // Pointer into catalog (valid until next Refresh)
 	std::vector<SlotInfo> slots; // All role slots (performers + spectator), filled status each
 };
 
 struct SessionView {
 	CoordinationState state;
 	uint16_t countdownMs;
-	uint32_t peerSlots[8]; // peerId per slot (matches AnimUpdateMsg layout)
+	uint32_t countdownEndTime; // SDL_GetTicks() timestamp when countdown expires (client-side)
+	uint32_t peerSlots[8];     // peerId per slot (matches AnimUpdateMsg layout)
 	uint8_t slotCount;
 };
 
@@ -62,12 +62,12 @@ public:
 		const int8_t* p_locationChars,
 		uint8_t p_locationCount,
 		const int8_t* p_proximityChars,
-		uint8_t p_proximityCount) const;
+		uint8_t p_proximityCount
+	) const;
 
 	// Auto-clear interest if current animation is not available at the new location.
 	void OnLocationChanged(int16_t p_location, const Catalog* p_catalog);
 
-	void Tick(uint32_t p_now);
 	void Reset();
 
 	// Apply authoritative session state from host
@@ -76,7 +76,8 @@ public:
 		uint8_t p_state,
 		uint16_t p_countdownMs,
 		const uint32_t p_slots[8],
-		uint8_t p_slotCount);
+		uint8_t p_slotCount
+	);
 
 	// Apply animation start from host
 	void ApplyAnimStart(uint16_t p_animIndex);

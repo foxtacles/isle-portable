@@ -197,12 +197,13 @@ bool Catalog::CanParticipate(const CatalogEntry* p_entry, uint8_t p_displayActor
 	return CanParticipateChar(p_entry, DisplayActorToCharacterIndex(p_displayActorIndex));
 }
 
-bool Catalog::CanTriggerDetailed(
+bool Catalog::CanTrigger(
 	const CatalogEntry* p_entry,
 	const int8_t* p_charIndices,
 	uint8_t p_count,
 	uint64_t* p_filledPerformers,
-	bool* p_spectatorFilled) const
+	bool* p_spectatorFilled
+) const
 {
 	*p_filledPerformers = 0;
 	*p_spectatorFilled = false;
@@ -232,19 +233,11 @@ bool Catalog::CanTriggerDetailed(
 		}
 
 		int8_t charIndex = p_charIndices[i];
-		if (charIndex >= 0 && !((p_entry->performerMask >> charIndex) & 1) &&
-			CheckSpectatorMask(p_entry, charIndex)) {
+		if (charIndex >= 0 && !((p_entry->performerMask >> charIndex) & 1) && CheckSpectatorMask(p_entry, charIndex)) {
 			*p_spectatorFilled = true;
 			break;
 		}
 	}
 
 	return allPerformersCovered && *p_spectatorFilled;
-}
-
-bool Catalog::CanTrigger(const CatalogEntry* p_entry, const int8_t* p_charIndices, uint8_t p_count) const
-{
-	uint64_t filledPerformers;
-	bool spectatorFilled;
-	return CanTriggerDetailed(p_entry, p_charIndices, p_count, &filledPerformers, &spectatorFilled);
 }

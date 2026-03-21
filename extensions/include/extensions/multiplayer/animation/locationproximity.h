@@ -5,6 +5,8 @@
 namespace Multiplayer::Animation
 {
 
+static constexpr float NPC_ANIM_PROXIMITY = 15.0f;
+
 class LocationProximity {
 public:
 	LocationProximity();

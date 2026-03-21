@@ -7,7 +7,7 @@
 
 using namespace Multiplayer::Animation;
 
-static const float DEFAULT_RADIUS = 15.0f;
+static const float DEFAULT_RADIUS = NPC_ANIM_PROXIMITY;
 
 // Location 0 is the camera origin, and the last location is overhead — skip both
 static const int FIRST_VALID_LOCATION = 1;
@@ -20,30 +20,18 @@ LocationProximity::LocationProximity() : m_nearestLocation(-1), m_nearestDistanc
 bool LocationProximity::Update(float p_x, float p_z)
 {
 	int16_t prev = m_nearestLocation;
-	int16_t nearest = ComputeNearest(p_x, p_z, m_radius);
+	m_nearestLocation = ComputeNearest(p_x, p_z, m_radius);
 
-	if (nearest != prev) {
-		m_nearestLocation = nearest;
-		// Recompute distance for the new nearest
-		if (nearest >= 0) {
-			float dx = p_x - g_locations[nearest].m_position[0];
-			float dz = p_z - g_locations[nearest].m_position[2];
-			m_nearestDistance = std::sqrt(dx * dx + dz * dz);
-		}
-		else {
-			m_nearestDistance = 0.0f;
-		}
-		return true;
-	}
-
-	// Update distance even when location didn't change
-	if (nearest >= 0) {
-		float dx = p_x - g_locations[nearest].m_position[0];
-		float dz = p_z - g_locations[nearest].m_position[2];
+	if (m_nearestLocation >= 0) {
+		float dx = p_x - g_locations[m_nearestLocation].m_position[0];
+		float dz = p_z - g_locations[m_nearestLocation].m_position[2];
 		m_nearestDistance = std::sqrt(dx * dx + dz * dz);
 	}
+	else {
+		m_nearestDistance = 0.0f;
+	}
 
-	return false;
+	return m_nearestLocation != prev;
 }
 
 void LocationProximity::Reset()

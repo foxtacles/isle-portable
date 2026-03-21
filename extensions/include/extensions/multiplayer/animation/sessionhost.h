@@ -36,10 +36,6 @@ public:
 		std::vector<uint16_t>& p_changedAnims);
 	bool HandleCancel(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims);
 	bool HandlePlayerRemoved(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims);
-	bool HandlePlayerCharChanged(
-		uint32_t p_peerId,
-		uint8_t p_newDisplayActorIndex,
-		std::vector<uint16_t>& p_changedAnims);
 
 	// Tick countdown timers. Returns animIndex of session ready to play, or ANIM_INDEX_NONE.
 	uint16_t Tick(uint32_t p_now);

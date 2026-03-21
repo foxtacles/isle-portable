@@ -43,7 +43,7 @@ void Coordinator::ClearInterest()
 	}
 }
 
-// Build the unified slots vector from CanTriggerDetailed results.
+// Build the unified slots vector from CanTrigger results.
 // Each bit in performerMask becomes one slot; the spectator becomes one slot at the end.
 static void BuildSlots(
 	const CatalogEntry* p_entry,
@@ -119,7 +119,7 @@ std::vector<EligibilityInfo> Coordinator::ComputeEligibility(
 		bool spectatorFilled = false;
 
 		if (atLoc) {
-			info.eligible = m_catalog->CanTriggerDetailed(entry, chars, count, &filledPerformers, &spectatorFilled);
+			info.eligible = m_catalog->CanTrigger(entry, chars, count, &filledPerformers, &spectatorFilled);
 		}
 		else {
 			info.eligible = false;
@@ -161,11 +161,6 @@ void Coordinator::OnLocationChanged(int16_t p_location, const Catalog* p_catalog
 	m_currentAnimIndex = ANIM_INDEX_NONE;
 }
 
-void Coordinator::Tick(uint32_t p_now)
-{
-	(void) p_now;
-}
-
 void Coordinator::Reset()
 {
 	m_state = CoordinationState::e_idle;
@@ -196,6 +191,7 @@ void Coordinator::ApplySessionUpdate(
 	SessionView& sv = m_sessions[p_animIndex];
 	sv.state = static_cast<CoordinationState>(p_state);
 	sv.countdownMs = p_countdownMs;
+	sv.countdownEndTime = (p_countdownMs > 0) ? (SDL_GetTicks() + p_countdownMs) : 0;
 	sv.slotCount = p_slotCount < 8 ? p_slotCount : 8;
 	for (uint8_t i = 0; i < 8; i++) {
 		sv.peerSlots[i] = (i < sv.slotCount) ? p_slots[i] : 0;

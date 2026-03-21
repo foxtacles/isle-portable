@@ -8,6 +8,16 @@
 
 using namespace Multiplayer::Animation;
 
+static bool HasAnyFilledSlot(const AnimSession& p_session)
+{
+	for (const auto& slot : p_session.slots) {
+		if (slot.peerId != 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void SessionHost::SetCatalog(const Catalog* p_catalog)
 {
 	m_catalog = p_catalog;
@@ -108,7 +118,8 @@ void SessionHost::RemovePlayerFromAllSessions(uint32_t p_peerId, std::vector<uin
 void SessionHost::RemovePlayerFromSessions(
 	uint32_t p_peerId,
 	bool p_includePlayingSessions,
-	std::vector<uint16_t>& p_changedAnims)
+	std::vector<uint16_t>& p_changedAnims
+)
 {
 	std::vector<uint16_t> toErase;
 
@@ -132,15 +143,7 @@ void SessionHost::RemovePlayerFromSessions(
 				session.countdownEndTime = 0;
 			}
 
-			bool anyFilled = false;
-			for (const auto& slot : session.slots) {
-				if (slot.peerId != 0) {
-					anyFilled = true;
-					break;
-				}
-			}
-
-			if (!anyFilled) {
+			if (!HasAnyFilledSlot(session)) {
 				toErase.push_back(animIndex);
 			}
 
@@ -157,7 +160,8 @@ bool SessionHost::HandleInterest(
 	uint32_t p_peerId,
 	uint16_t p_animIndex,
 	uint8_t p_displayActorIndex,
-	std::vector<uint16_t>& p_changedAnims)
+	std::vector<uint16_t>& p_changedAnims
+)
 {
 	if (!m_catalog) {
 		return false;
@@ -186,14 +190,7 @@ bool SessionHost::HandleInterest(
 
 	// Clean up empty sessions (created but no one could fill a slot)
 	if (!assigned) {
-		bool anyFilled = false;
-		for (const auto& slot : it->second.slots) {
-			if (slot.peerId != 0) {
-				anyFilled = true;
-				break;
-			}
-		}
-		if (!anyFilled) {
+		if (!HasAnyFilledSlot(it->second)) {
 			m_sessions.erase(it);
 		}
 	}
@@ -208,15 +205,6 @@ bool SessionHost::HandleCancel(uint32_t p_peerId, std::vector<uint16_t>& p_chang
 }
 
 bool SessionHost::HandlePlayerRemoved(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims)
-{
-	RemovePlayerFromSessions(p_peerId, true, p_changedAnims);
-	return !p_changedAnims.empty();
-}
-
-bool SessionHost::HandlePlayerCharChanged(
-	uint32_t p_peerId,
-	uint8_t p_newDisplayActorIndex,
-	std::vector<uint16_t>& p_changedAnims)
 {
 	RemovePlayerFromSessions(p_peerId, true, p_changedAnims);
 	return !p_changedAnims.empty();

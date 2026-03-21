@@ -142,6 +142,11 @@ private:
 	bool GetPeerPosition(uint32_t p_peerId, float& p_x, float& p_z) const;
 	bool ValidateSessionLocations(uint16_t p_animIndex);
 
+	void ResetAnimationState();
+	void CancelLocalAnimInterest();
+	void BroadcastChangedSessions(const std::vector<uint16_t>& p_changedAnims);
+	void TickHostSessions();
+
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();
