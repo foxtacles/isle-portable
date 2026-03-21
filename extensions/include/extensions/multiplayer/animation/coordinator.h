@@ -94,6 +94,10 @@ private:
 	uint16_t m_currentAnimIndex;
 	uint32_t m_localPeerId;
 
+	// When true, a cancel has been sent to the host but not yet confirmed.
+	// Prevents stale session updates from re-enrolling the local player.
+	bool m_cancelPending;
+
 	// Known sessions from host broadcasts
 	std::map<uint16_t, SessionView> m_sessions;
 };

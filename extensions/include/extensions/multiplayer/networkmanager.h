@@ -137,9 +137,11 @@ private:
 	void HandleAnimStart(const AnimStartMsg& p_msg);
 	void HandleAnimStartLocally(uint16_t p_animIndex);
 	void BroadcastAnimUpdate(uint16_t p_animIndex);
+	void SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_targetPeerId);
 	void BroadcastAnimStart(uint16_t p_animIndex);
 	int16_t GetPeerLocation(uint32_t p_peerId) const;
 	bool GetPeerPosition(uint32_t p_peerId, float& p_x, float& p_z) const;
+	bool IsPeerNearby(uint32_t p_peerId, float p_refX, float p_refZ) const;
 	bool ValidateSessionLocations(uint16_t p_animIndex);
 
 	void ResetAnimationState();

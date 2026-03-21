@@ -200,7 +200,16 @@ bool SessionHost::HandleInterest(
 
 bool SessionHost::HandleCancel(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims)
 {
-	RemovePlayerFromAllSessions(p_peerId, p_changedAnims);
+	RemovePlayerFromSessions(p_peerId, true, p_changedAnims);
+
+	// Explicit cancel during playback: erase entire session so all participants stop
+	for (uint16_t animIndex : p_changedAnims) {
+		auto it = m_sessions.find(animIndex);
+		if (it != m_sessions.end() && it->second.state == CoordinationState::e_playing) {
+			m_sessions.erase(it);
+		}
+	}
+
 	return !p_changedAnims.empty();
 }
 

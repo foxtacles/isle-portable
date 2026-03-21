@@ -90,7 +90,21 @@ MxResult NetworkManager::Tickle()
 		bool cameraEnabled = cam->IsEnabled();
 		if (cameraEnabled != m_lastCameraEnabled) {
 			m_lastCameraEnabled = cameraEnabled;
+			m_animStateDirty = true;
 			NotifyThirdPersonChanged(cameraEnabled);
+
+			// Safety net: cancel animation when camera is disabled by any source
+			// (vehicle entry, restricted area, etc.)
+			if (!cameraEnabled) {
+				Animation::CoordinationState camState = m_animCoordinator.GetState();
+				if (camState != Animation::CoordinationState::e_idle) {
+					CancelLocalAnimInterest();
+					if (m_scenePlayer.IsPlaying()) {
+						m_scenePlayer.Stop();
+						cam->SetAnimPlaying(false);
+					}
+				}
+			}
 
 			if (m_localNameBubble) {
 				if (!cameraEnabled) {
@@ -548,15 +562,14 @@ void NetworkManager::ProcessPendingRequests()
 	// the request survives until the camera exists.
 	if (cam) {
 		if (m_pendingToggleThirdPerson.exchange(false, std::memory_order_relaxed)) {
-			Animation::CoordinationState camToggleState = m_animCoordinator.GetState();
-			if (cam->IsAnimPlaying() || camToggleState == Animation::CoordinationState::e_countdown ||
-				camToggleState == Animation::CoordinationState::e_playing) {
-				// Ignore toggle during countdown or animation playback
-			}
-			else if (cam->IsEnabled()) {
-				// Switching to 1st person: auto-cancel animation interest
-				if (camToggleState == Animation::CoordinationState::e_interested) {
+			if (cam->IsEnabled()) {
+				Animation::CoordinationState camToggleState = m_animCoordinator.GetState();
+				if (camToggleState != Animation::CoordinationState::e_idle) {
 					CancelLocalAnimInterest();
+					if (m_scenePlayer.IsPlaying()) {
+						m_scenePlayer.Stop();
+						cam->SetAnimPlaying(false);
+					}
 				}
 				cam->Disable();
 				NotifyThirdPersonChanged(false);
@@ -857,13 +870,16 @@ void NetworkManager::UpdateRemotePlayers(float p_deltaTime)
 {
 	float radius = m_locationProximity.GetRadius();
 	int16_t localLoc = m_locationProximity.GetNearestLocation();
-	bool anyNearby = false;
+	bool anyInIsle = false;
 
 	for (auto& [peerId, player] : m_remotePlayers) {
 		player->Tick(p_deltaTime);
 
 		// Derive nearest location from remote player's current position
-		if (player->IsSpawned() && player->GetROI()) {
+		// Skip players not in the isle world — their position is stale
+		if (player->IsSpawned() && player->GetROI() && player->GetWorldId() == (int8_t) LegoOmni::e_act1) {
+			anyInIsle = true;
+
 			int16_t oldLoc = player->GetNearestLocation();
 			const float* pos = player->GetROI()->GetWorldPosition();
 			int16_t newLoc = Animation::LocationProximity::ComputeNearest(pos[0], pos[2], radius);
@@ -871,24 +887,12 @@ void NetworkManager::UpdateRemotePlayers(float p_deltaTime)
 			if (oldLoc != newLoc && (oldLoc == localLoc || newLoc == localLoc)) {
 				m_animStateDirty = true;
 			}
-
-			// Check if any player is near enough to affect NPC anim eligibility
-			if (!anyNearby) {
-				LegoPathActor* userActor = UserActor();
-				if (userActor && userActor->GetROI()) {
-					const float* lpos = userActor->GetROI()->GetWorldPosition();
-					float dx = pos[0] - lpos[0];
-					float dz = pos[2] - lpos[2];
-					if ((dx * dx + dz * dz) <= NPC_ANIM_NEARBY_RADIUS_SQ) {
-						anyNearby = true;
-					}
-				}
-			}
 		}
 	}
 
-	// When remote players are nearby, keep pushing so proximity-based eligibility stays fresh
-	if (anyNearby) {
+	// Keep pushing while remote players are in the isle world so proximity-based
+	// eligibility and session display stay up to date as players move around
+	if (anyInIsle) {
 		m_animStateDirty = true;
 	}
 }
@@ -932,6 +936,13 @@ void NetworkManager::HandleState(const PlayerStateMsg& p_msg)
 		CreateAndSpawnPlayer(peerId, p_msg.actorId, p_msg.displayActorIndex);
 		NotifyPlayerCountChanged();
 		it = m_remotePlayers.find(peerId);
+
+		// Send existing session state so the new player sees active sessions
+		if (IsHost()) {
+			for (const auto& [animIndex, session] : m_animSessionHost.GetSessions()) {
+				SendAnimUpdateToPlayer(animIndex, peerId);
+			}
+		}
 	}
 
 	// Respawn only if display actor changed (not on actorId change)
@@ -970,6 +981,7 @@ void NetworkManager::HandleState(const PlayerStateMsg& p_msg)
 	bool nowInIsle = (p_msg.worldId == (int8_t) LegoOmni::e_act1);
 	if (m_inIsleWorld && wasInIsle != nowInIsle) {
 		NotifyPlayerCountChanged();
+		m_animStateDirty = true;
 
 		// Player left the isle world — remove from animation sessions
 		if (wasInIsle && !nowInIsle && IsHost()) {
@@ -988,12 +1000,16 @@ void NetworkManager::HandleHostAssign(const HostAssignMsg& p_msg)
 
 	m_worldSync.SetHost(IsHost());
 
-	if (!IsHost() && oldHost != m_hostPeerId) {
-		m_worldSync.OnHostChanged();
+	if (oldHost != m_hostPeerId) {
+		if (!IsHost()) {
+			m_worldSync.OnHostChanged();
+		}
+		// Reset coordination on actual host change, not initial assignment.
+		// Initial assignment (oldHost==0) may race with session updates from the host.
+		if (oldHost != 0) {
+			ResetAnimationState();
+		}
 	}
-
-	// Reset coordination on host change
-	ResetAnimationState();
 }
 
 void NetworkManager::SetWalkAnimation(uint8_t p_walkAnimId)
@@ -1230,7 +1246,6 @@ void NetworkManager::TickHostSessions()
 				m_animSessionHost.HandleCancel(pid, changed);
 				BroadcastChangedSessions(changed);
 			}
-			// Re-fetch session after possible modifications
 			session = m_animSessionHost.FindSession(animIndex);
 			if (!session) {
 				continue;
@@ -1281,6 +1296,29 @@ void NetworkManager::HandleAnimInterest(uint32_t p_peerId, uint16_t p_animIndex,
 		}
 	}
 
+	// For NPC anims: if all slots are full, remove far-away participants to make room
+	// for the new nearby player. This only fires when slots are exhausted — if there's
+	// an open slot, the new player just joins normally without disturbing anyone.
+	if (entry && entry->location == -1 && m_animSessionHost.AreAllSlotsFilled(p_animIndex)) {
+		float newX, newZ;
+		if (GetPeerPosition(p_peerId, newX, newZ)) {
+			const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
+			if (session) {
+				std::vector<uint32_t> stale;
+				for (const auto& slot : session->slots) {
+					if (slot.peerId != 0 && slot.peerId != p_peerId && !IsPeerNearby(slot.peerId, newX, newZ)) {
+						stale.push_back(slot.peerId);
+					}
+				}
+				for (uint32_t pid : stale) {
+					std::vector<uint16_t> changed;
+					m_animSessionHost.HandleCancel(pid, changed);
+					BroadcastChangedSessions(changed);
+				}
+			}
+		}
+	}
+
 	std::vector<uint16_t> changedAnims;
 	if (m_animSessionHost.HandleInterest(p_peerId, p_animIndex, p_displayActorIndex, changedAnims)) {
 		BroadcastChangedSessions(changedAnims);
@@ -1294,10 +1332,25 @@ void NetworkManager::HandleAnimCancel(uint32_t p_peerId)
 		return;
 	}
 
+	Animation::CoordinationState oldState = m_animCoordinator.GetState();
+
 	std::vector<uint16_t> changedAnims;
 	if (m_animSessionHost.HandleCancel(p_peerId, changedAnims)) {
 		BroadcastChangedSessions(changedAnims);
 		m_animInterestDirty = true;
+	}
+
+	// If a playing session was erased, host's coordinator transitions to idle via
+	// BroadcastChangedSessions → BroadcastAnimUpdate → ApplySessionUpdate
+	if (oldState == Animation::CoordinationState::e_playing &&
+		m_animCoordinator.GetState() == Animation::CoordinationState::e_idle) {
+		if (m_scenePlayer.IsPlaying()) {
+			m_scenePlayer.Stop();
+			ThirdPersonCamera::Controller* cam = GetCamera();
+			if (cam) {
+				cam->SetAnimPlaying(false);
+			}
+		}
 	}
 }
 
@@ -1306,6 +1359,8 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 	if (IsHost()) {
 		return; // Host already updated its own state
 	}
+
+	Animation::CoordinationState oldState = m_animCoordinator.GetState();
 
 	uint32_t slots[8];
 	for (uint8_t i = 0; i < 8; i++) {
@@ -1317,6 +1372,18 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 	// If local player's pending interest matches, clear it (host has responded)
 	if (m_localPendingAnimInterest >= 0 && static_cast<uint16_t>(m_localPendingAnimInterest) == p_msg.animIndex) {
 		m_localPendingAnimInterest = -1;
+	}
+
+	// Detect playing→idle transition from session cancellation: stop local scene
+	if (oldState == Animation::CoordinationState::e_playing &&
+		m_animCoordinator.GetState() == Animation::CoordinationState::e_idle) {
+		if (m_scenePlayer.IsPlaying()) {
+			m_scenePlayer.Stop();
+			ThirdPersonCamera::Controller* cam = GetCamera();
+			if (cam) {
+				cam->SetAnimPlaying(false);
+			}
+		}
 	}
 
 	m_animStateDirty = true;
@@ -1409,6 +1476,30 @@ void NetworkManager::BroadcastAnimUpdate(uint16_t p_animIndex)
 	m_animCoordinator.ApplySessionUpdate(msg.animIndex, msg.state, msg.countdownMs, slots, msg.slotCount);
 }
 
+void NetworkManager::SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_targetPeerId)
+{
+	AnimUpdateMsg msg{};
+	msg.header = {MSG_ANIM_UPDATE, m_localPeerId, m_sequence++, p_targetPeerId};
+	msg.animIndex = p_animIndex;
+
+	const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
+	if (session) {
+		msg.state = static_cast<uint8_t>(session->state);
+		msg.countdownMs = Animation::SessionHost::ComputeCountdownMs(*session, SDL_GetTicks());
+		msg.slotCount = static_cast<uint8_t>(session->slots.size() < 8 ? session->slots.size() : 8);
+		for (uint8_t i = 0; i < msg.slotCount; i++) {
+			msg.slots[i].peerId = session->slots[i].peerId;
+		}
+	}
+	else {
+		msg.state = 0;
+		msg.countdownMs = 0;
+		msg.slotCount = 0;
+	}
+
+	SendMessage(msg);
+}
+
 void NetworkManager::BroadcastAnimStart(uint16_t p_animIndex)
 {
 	AnimStartMsg msg{};
@@ -1452,6 +1543,25 @@ bool NetworkManager::GetPeerPosition(uint32_t p_peerId, float& p_x, float& p_z) 
 		return true;
 	}
 	return false;
+}
+
+bool NetworkManager::IsPeerNearby(uint32_t p_peerId, float p_refX, float p_refZ) const
+{
+	if (p_peerId == 0) {
+		return false;
+	}
+	if (p_peerId == m_localPeerId) {
+		return true;
+	}
+	auto it = m_remotePlayers.find(p_peerId);
+	if (it == m_remotePlayers.end() || !it->second->IsSpawned() || !it->second->GetROI() ||
+		it->second->GetWorldId() != (int8_t) LegoOmni::e_act1) {
+		return false;
+	}
+	const float* pos = it->second->GetROI()->GetWorldPosition();
+	float dx = pos[0] - p_refX;
+	float dz = pos[2] - p_refZ;
+	return (dx * dx + dz * dz) <= NPC_ANIM_NEARBY_RADIUS_SQ;
 }
 
 bool NetworkManager::ValidateSessionLocations(uint16_t p_animIndex)
@@ -1668,6 +1778,12 @@ void NetworkManager::PushAnimationState()
 {
 	ThirdPersonCamera::Controller* cam = GetCamera();
 	if (!cam || !cam->GetDisplayROI()) {
+		// Camera unavailable — push idle state so the frontend clears any countdown/session UI
+		if (m_callbacks) {
+			m_callbacks->OnAnimationsAvailable(
+				"{\"location\":-1,\"state\":0,\"currentAnimIndex\":65535,\"pendingInterest\":-1,\"animations\":[]}"
+			);
+		}
 		return;
 	}
 
@@ -1691,7 +1807,7 @@ void NetworkManager::PushAnimationState()
 	proximityCharIndices.push_back(localCharIndex);
 
 	for (const auto& [peerId, player] : m_remotePlayers) {
-		if (!player->IsSpawned() || !player->GetROI()) {
+		if (!player->IsSpawned() || !player->GetROI() || player->GetWorldId() != (int8_t) LegoOmni::e_act1) {
 			continue;
 		}
 		int8_t charIdx = Animation::Catalog::DisplayActorToCharacterIndex(player->GetDisplayActorIndex());
@@ -1756,9 +1872,7 @@ void NetworkManager::PushAnimationState()
 				sessionState = static_cast<uint8_t>(sv->state);
 				if (sv->state == Animation::CoordinationState::e_countdown && sv->countdownEndTime > 0) {
 					uint32_t now = SDL_GetTicks();
-					countdownMs = (now < sv->countdownEndTime)
-						? static_cast<uint16_t>(sv->countdownEndTime - now)
-						: 0;
+					countdownMs = (now < sv->countdownEndTime) ? static_cast<uint16_t>(sv->countdownEndTime - now) : 0;
 				}
 				else {
 					countdownMs = sv->countdownMs;
@@ -1767,6 +1881,40 @@ void NetworkManager::PushAnimationState()
 		}
 
 		bool localInSession = m_animCoordinator.IsLocalPlayerInSession(info.animIndex);
+
+		// Suppress session display if local player is not in the session and no
+		// session participant is nearby — prevents stale "Join!" for far-away sessions
+		if (sessionState > 0 && !localInSession) {
+			bool anyParticipantNearby = false;
+
+			if (IsHost()) {
+				const Animation::AnimSession* hs = m_animSessionHost.FindSession(info.animIndex);
+				if (hs) {
+					for (const auto& slot : hs->slots) {
+						if (IsPeerNearby(slot.peerId, localX, localZ)) {
+							anyParticipantNearby = true;
+							break;
+						}
+					}
+				}
+			}
+			else {
+				const Animation::SessionView* ssv = m_animCoordinator.GetSessionView(info.animIndex);
+				if (ssv) {
+					for (uint8_t s = 0; s < ssv->slotCount && !anyParticipantNearby; s++) {
+						if (IsPeerNearby(ssv->peerSlots[s], localX, localZ)) {
+							anyParticipantNearby = true;
+						}
+					}
+				}
+			}
+
+			if (!anyParticipantNearby) {
+				sessionState = 0;
+				countdownMs = 0;
+			}
+		}
+
 		BuildAnimationJson(json, info, animInfo, sessionState, countdownMs, localInSession, localCharIndex);
 	}
 

@@ -11,7 +11,8 @@ using namespace Multiplayer::Animation;
 extern LegoAnimationManager::Character g_characters[47];
 
 Coordinator::Coordinator()
-	: m_catalog(nullptr), m_state(CoordinationState::e_idle), m_currentAnimIndex(ANIM_INDEX_NONE), m_localPeerId(0)
+	: m_catalog(nullptr), m_state(CoordinationState::e_idle), m_currentAnimIndex(ANIM_INDEX_NONE), m_localPeerId(0),
+	  m_cancelPending(false)
 {
 }
 
@@ -33,13 +34,16 @@ void Coordinator::SetInterest(uint16_t p_animIndex)
 
 	m_currentAnimIndex = p_animIndex;
 	m_state = CoordinationState::e_interested;
+	m_cancelPending = false;
 }
 
 void Coordinator::ClearInterest()
 {
-	if (m_state == CoordinationState::e_interested) {
+	if (m_state == CoordinationState::e_interested || m_state == CoordinationState::e_countdown ||
+		m_state == CoordinationState::e_playing) {
 		m_state = CoordinationState::e_idle;
 		m_currentAnimIndex = ANIM_INDEX_NONE;
+		m_cancelPending = true;
 	}
 }
 
@@ -49,7 +53,8 @@ static void BuildSlots(
 	const CatalogEntry* p_entry,
 	uint64_t p_filledPerformers,
 	bool p_spectatorFilled,
-	std::vector<SlotInfo>& p_slots)
+	std::vector<SlotInfo>& p_slots
+)
 {
 	// One slot per performer bit in performerMask
 	for (int8_t i = 0; i < 64; i++) {
@@ -87,7 +92,8 @@ std::vector<EligibilityInfo> Coordinator::ComputeEligibility(
 	const int8_t* p_locationChars,
 	uint8_t p_locationCount,
 	const int8_t* p_proximityChars,
-	uint8_t p_proximityCount) const
+	uint8_t p_proximityCount
+) const
 {
 	std::vector<EligibilityInfo> result;
 
@@ -159,6 +165,7 @@ void Coordinator::OnLocationChanged(int16_t p_location, const Catalog* p_catalog
 	// Animation not at new location — clear interest
 	m_state = CoordinationState::e_idle;
 	m_currentAnimIndex = ANIM_INDEX_NONE;
+	m_cancelPending = true;
 }
 
 void Coordinator::Reset()
@@ -166,6 +173,7 @@ void Coordinator::Reset()
 	m_state = CoordinationState::e_idle;
 	m_currentAnimIndex = ANIM_INDEX_NONE;
 	m_sessions.clear();
+	m_cancelPending = false;
 }
 
 void Coordinator::ApplySessionUpdate(
@@ -173,7 +181,8 @@ void Coordinator::ApplySessionUpdate(
 	uint8_t p_state,
 	uint16_t p_countdownMs,
 	const uint32_t p_slots[8],
-	uint8_t p_slotCount)
+	uint8_t p_slotCount
+)
 {
 	if (p_state == 0) {
 		// Session cleared
@@ -181,7 +190,8 @@ void Coordinator::ApplySessionUpdate(
 
 		// If local player was in this session, reset to idle
 		if (m_currentAnimIndex == p_animIndex &&
-			(m_state == CoordinationState::e_interested || m_state == CoordinationState::e_countdown)) {
+			(m_state == CoordinationState::e_interested || m_state == CoordinationState::e_countdown ||
+			 m_state == CoordinationState::e_playing)) {
 			m_state = CoordinationState::e_idle;
 			m_currentAnimIndex = ANIM_INDEX_NONE;
 		}
@@ -207,14 +217,16 @@ void Coordinator::ApplySessionUpdate(
 			}
 		}
 
-		if (localInSession) {
+		if (localInSession && !m_cancelPending) {
 			m_currentAnimIndex = p_animIndex;
 			m_state = sv.state;
 		}
-		else if (m_currentAnimIndex == p_animIndex) {
-			// Local player was removed from this session
-			m_state = CoordinationState::e_idle;
-			m_currentAnimIndex = ANIM_INDEX_NONE;
+		else if (!localInSession) {
+			if (m_currentAnimIndex == p_animIndex) {
+				m_state = CoordinationState::e_idle;
+				m_currentAnimIndex = ANIM_INDEX_NONE;
+			}
+			m_cancelPending = false;
 		}
 	}
 }
@@ -245,7 +257,7 @@ const SessionView* Coordinator::GetSessionView(uint16_t p_animIndex) const
 
 bool Coordinator::IsLocalPlayerInSession(uint16_t p_animIndex) const
 {
-	if (m_localPeerId == 0) {
+	if (m_cancelPending || m_localPeerId == 0) {
 		return false;
 	}
 
