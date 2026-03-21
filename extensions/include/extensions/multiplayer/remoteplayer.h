@@ -50,6 +50,7 @@ public:
 	void SetClickAnimObjectId(MxU32 p_clickAnimObjectId) { m_animator.SetClickAnimObjectId(p_clickAnimObjectId); }
 	void StopClickAnimation();
 	bool IsInVehicle() const { return m_animator.IsInVehicle(); }
+	LegoROI* GetRideVehicleROI() const { return m_animator.GetRideVehicleROI(); }
 	bool IsMoving() const { return m_animator.IsInVehicle() || m_targetSpeed > 0.01f; }
 	bool IsInMultiPartEmote() const { return m_animator.IsInMultiPartEmote(); }
 

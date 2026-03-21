@@ -20,6 +20,7 @@ namespace Multiplayer::Animation
 // A participant (local or remote player) whose ROI is borrowed during animation
 struct ParticipantROI {
 	LegoROI* roi;
+	LegoROI* vehicleROI; // Ride vehicle ROI (bike/board/moto), or nullptr
 	MxMatrix savedTransform;
 	std::string savedName;
 	int8_t charIndex; // g_characters[] index this slot requires (-1 for spectator)

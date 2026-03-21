@@ -1465,6 +1465,7 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 
 			Animation::ParticipantROI rp;
 			rp.roi = it->second->GetROI();
+			rp.vehicleROI = it->second->GetRideVehicleROI();
 			rp.charIndex = slotChars[i];
 			rp.isSpectator = (slotChars[i] == -1);
 			participants.push_back(rp);
@@ -1495,6 +1496,7 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex)
 	{
 		Animation::ParticipantROI local;
 		local.roi = cam->GetDisplayROI();
+		local.vehicleROI = cam->GetRideVehicleROI();
 		local.charIndex = localCharIndex;
 		local.isSpectator = localIsSpectator;
 		participants.insert(participants.begin(), local);

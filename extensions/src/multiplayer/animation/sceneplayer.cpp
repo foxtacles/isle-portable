@@ -32,8 +32,8 @@ extern LegoAnimationManager::Character g_characters[47];
 
 ScenePlayer::ScenePlayer()
 	: m_playing(false), m_rebaseComputed(false), m_startTime(0), m_currentData(nullptr), m_category(e_npcAnim),
-	  m_animRootROI(nullptr), m_vehicleROI(nullptr), m_hiddenVehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0), m_propROIs(nullptr),
-	  m_propCount(0), m_hasCamAnim(false), m_hideOnStop(false), m_debugFirstTickLogged(false)
+	  m_animRootROI(nullptr), m_vehicleROI(nullptr), m_hiddenVehicleROI(nullptr), m_roiMap(nullptr), m_roiMapSize(0),
+	  m_propROIs(nullptr), m_propCount(0), m_hasCamAnim(false), m_hideOnStop(false), m_debugFirstTickLogged(false)
 {
 }
 
@@ -57,8 +57,8 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 {
 	LegoU32 numActors = m_currentData->anim->GetNumActors();
 	std::vector<LegoROI*> createdROIs;
-	std::vector<AnimUtils::ROIAlias> aliases;    // participant animation name → ROI mappings
-	std::vector<std::string> aliasNames;         // storage for alias name strings
+	std::vector<AnimUtils::ROIAlias> aliases; // participant animation name → ROI mappings
+	std::vector<std::string> aliasNames;      // storage for alias name strings
 
 	SDL_Log(
 		"[ScenePlayer] SetupROIs: anim='%s' category=%d numActors=%u participants=%zu",
@@ -97,13 +97,7 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 		std::string lowered(lookupName);
 		std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
 
-		SDL_Log(
-			"[ScenePlayer]   actor[%u]: raw='%s' lowered='%s' type=%u",
-			i,
-			actorName,
-			lowered.c_str(),
-			actorType
-		);
+		SDL_Log("[ScenePlayer]   actor[%u]: raw='%s' lowered='%s' type=%u", i, actorName, lowered.c_str(), actorType);
 
 		// For character actors, check if any participant fills this role
 		if (actorType == LegoAnimActorEntry::e_managedLegoActor) {
@@ -114,11 +108,10 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 					continue;
 				}
 
-				const char* charName =
-					(m_participants[p].charIndex >= 0 &&
-					 m_participants[p].charIndex < (int8_t) sizeOfArray(g_characters))
-					? g_characters[m_participants[p].charIndex].m_name
-					: "(none)";
+				const char* charName = (m_participants[p].charIndex >= 0 &&
+										m_participants[p].charIndex < (int8_t) sizeOfArray(g_characters))
+										   ? g_characters[m_participants[p].charIndex].m_name
+										   : "(none)";
 
 				SDL_Log(
 					"[ScenePlayer]     trying participant[%zu] charIndex=%d charName='%s' vs actor='%s' => %s",
@@ -160,11 +153,7 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 				createdROIs.push_back(roi);
 			}
 		}
-		else if (
-			actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed ||
-			actorType == LegoAnimActorEntry::e_sceneRoi1 ||
-			actorType == LegoAnimActorEntry::e_sceneRoi2
-		) {
+		else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed || actorType == LegoAnimActorEntry::e_sceneRoi1 || actorType == LegoAnimActorEntry::e_sceneRoi2) {
 			// Prop with digit-trimmed LOD name
 			char uniqueName[64];
 			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
@@ -186,19 +175,88 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 			}
 		}
 		else {
-			// Type 0/1: create as prop. If creation fails, reuse the vehicle ROI.
-			char uniqueName[64];
-			SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
-			LegoROI* roi =
-				CharacterManager()->CreateAutoROI(uniqueName, AnimUtils::TrimLODSuffix(lowered).c_str(), FALSE);
-			if (roi) {
-				roi->SetName(lowered.c_str());
-				createdROIs.push_back(roi);
+			// Type 0/1: check if this is a vehicle actor (ModelInfo::m_unk0x2c flag).
+			// If so, use any performer's vehicle ROI regardless of variant name
+			// (the ride system always uses "bikebd" even for bikesy/bikepg/bikerd).
+			LegoROI* roi = nullptr;
+			bool isVehicleActor = false;
+
+			// Check ModelInfo for the vehicle flag
+			for (uint8_t m = 0; m < p_animInfo->m_modelCount; m++) {
+				if (p_animInfo->m_models[m].m_name &&
+					!SDL_strcasecmp(lowered.c_str(), p_animInfo->m_models[m].m_name) &&
+					p_animInfo->m_models[m].m_unk0x2c) {
+					isVehicleActor = true;
+					break;
+				}
 			}
-			else if (p_vehicleROI && !m_vehicleROI) {
+
+			// 1. If vehicle actor, use performer's vehicle ROI if types match.
+			// The ride system always uses a single variant name (e.g. "bikebd" for
+			// all bikes), but the animation may reference a character-specific variant
+			// (e.g. "bikesy"). Match by vehicle category using FindVehicle indices:
+			// bikes (0-3), motorcycles (4-5), skateboard (6).
+			if (isVehicleActor && !m_vehicleROI) {
+				MxU32 animVehicleIdx;
+				if (AnimationManager()->FindVehicle(lowered.c_str(), animVehicleIdx)) {
+					for (size_t p = 0; p < m_participants.size(); p++) {
+						if (!m_participants[p].vehicleROI) {
+							continue;
+						}
+
+						MxU32 perfVehicleIdx;
+						if (AnimationManager()->FindVehicle(m_participants[p].vehicleROI->GetName(), perfVehicleIdx)) {
+							// Same category? bikes=0-3, motos=4-5, board=6
+							bool sameCategory = (animVehicleIdx <= 3 && perfVehicleIdx <= 3) ||
+												(animVehicleIdx >= 4 && animVehicleIdx <= 5 && perfVehicleIdx >= 4 &&
+												 perfVehicleIdx <= 5) ||
+												(animVehicleIdx == perfVehicleIdx);
+
+							if (sameCategory) {
+								m_vehicleROI = m_participants[p].vehicleROI;
+								m_savedVehicleName = m_participants[p].vehicleROI->GetName();
+								aliasNames.push_back(lowered);
+								AnimUtils::ROIAlias vAlias;
+								vAlias.animName = aliasNames.back().c_str();
+								vAlias.roi = m_vehicleROI;
+								aliases.push_back(vAlias);
+								roi = m_vehicleROI;
+								SDL_Log(
+									"[ScenePlayer]     type 0/1: vehicle '%s' (idx %u), "
+									"using participant[%zu] vehicle '%s' (idx %u)",
+									lowered.c_str(),
+									animVehicleIdx,
+									p,
+									m_savedVehicleName.c_str(),
+									perfVehicleIdx
+								);
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			// 2. Try creating as prop
+			if (!roi) {
+				char uniqueName[64];
+				SDL_snprintf(uniqueName, sizeof(uniqueName), "npc_prop_%s", lowered.c_str());
+				roi = CharacterManager()->CreateAutoROI(uniqueName, AnimUtils::TrimLODSuffix(lowered).c_str(), FALSE);
+				if (roi) {
+					roi->SetName(lowered.c_str());
+					createdROIs.push_back(roi);
+				}
+			}
+
+			// 3. Final fallback: borrow caller's vehicle ROI via alias
+			if (!roi && p_vehicleROI && !m_vehicleROI) {
 				m_vehicleROI = p_vehicleROI;
 				m_savedVehicleName = p_vehicleROI->GetName();
-				p_vehicleROI->SetName(lowered.c_str());
+				aliasNames.push_back(lowered);
+				AnimUtils::ROIAlias vAlias;
+				vAlias.animName = aliasNames.back().c_str();
+				vAlias.roi = m_vehicleROI;
+				aliases.push_back(vAlias);
 			}
 		}
 	}
@@ -252,11 +310,7 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, Leg
 	m_roiMap = nullptr;
 	m_roiMapSize = 0;
 
-	SDL_Log(
-		"[ScenePlayer] BuildROIMap: rootROI='%s' extraCount=%zu",
-		rootROI->GetName(),
-		extras.size()
-	);
+	SDL_Log("[ScenePlayer] BuildROIMap: rootROI='%s' extraCount=%zu", rootROI->GetName(), extras.size());
 	for (size_t e = 0; e < extras.size(); e++) {
 		SDL_Log("[ScenePlayer]   extra[%zu]: '%s'", e, extras[e]->GetName());
 	}
@@ -336,6 +390,7 @@ void ScenePlayer::Play(
 	{
 		ParticipantROI local;
 		local.roi = p_localROI;
+		local.vehicleROI = p_vehicleROI;
 		local.savedTransform = p_localROI->GetLocal2World();
 		local.savedName = p_localROI->GetName();
 		local.charIndex = localCharIndex;
@@ -351,6 +406,7 @@ void ScenePlayer::Play(
 
 		ParticipantROI remote;
 		remote.roi = p_participants[i].roi;
+		remote.vehicleROI = p_participants[i].vehicleROI;
 		remote.savedTransform = p_participants[i].roi->GetLocal2World();
 		remote.savedName = p_participants[i].roi->GetName();
 		remote.charIndex = p_participants[i].charIndex;
@@ -424,8 +480,7 @@ void ScenePlayer::ComputeRebaseMatrix()
 
 	// Find the root ROI's node in the animation tree and compute its WORLD
 	// transform at time 0 by accumulating parent transforms.
-	std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin = [&](LegoTreeNode* node,
-																   MxMatrix& parentWorld) -> bool {
+	std::function<bool(LegoTreeNode*, MxMatrix&)> findOrigin = [&](LegoTreeNode* node, MxMatrix& parentWorld) -> bool {
 		LegoAnimNodeData* data = (LegoAnimNodeData*) node->GetData();
 		MxU32 roiIdx = data ? data->GetROIIndex() : 0;
 
@@ -477,8 +532,7 @@ void ScenePlayer::ResolvePtAtCamROIs()
 
 	for (const auto& name : m_currentData->ptAtCamNames) {
 		for (MxU32 i = 1; i < m_roiMapSize; i++) {
-			if (m_roiMap[i] && m_roiMap[i]->GetName() &&
-				!SDL_strcasecmp(name.c_str(), m_roiMap[i]->GetName())) {
+			if (m_roiMap[i] && m_roiMap[i]->GetName() && !SDL_strcasecmp(name.c_str(), m_roiMap[i]->GetName())) {
 				m_ptAtCamROIs.push_back(m_roiMap[i]);
 				break;
 			}
@@ -563,9 +617,21 @@ void ScenePlayer::Tick(float p_deltaTime)
 				// Animation keyframes are already in world space; the parent transform is
 				// typically identity (loc=0, dir=forward, up=up).
 				if (m_currentData->hasActionTransform) {
-					Mx3DPointFloat loc(m_currentData->actionLocation[0], m_currentData->actionLocation[1], m_currentData->actionLocation[2]);
-					Mx3DPointFloat dir(m_currentData->actionDirection[0], m_currentData->actionDirection[1], m_currentData->actionDirection[2]);
-					Mx3DPointFloat up(m_currentData->actionUp[0], m_currentData->actionUp[1], m_currentData->actionUp[2]);
+					Mx3DPointFloat loc(
+						m_currentData->actionLocation[0],
+						m_currentData->actionLocation[1],
+						m_currentData->actionLocation[2]
+					);
+					Mx3DPointFloat dir(
+						m_currentData->actionDirection[0],
+						m_currentData->actionDirection[1],
+						m_currentData->actionDirection[2]
+					);
+					Mx3DPointFloat up(
+						m_currentData->actionUp[0],
+						m_currentData->actionUp[1],
+						m_currentData->actionUp[2]
+					);
 					CalcLocalTransform(loc, dir, up, m_rebaseMatrix);
 				}
 				else {
@@ -592,7 +658,9 @@ void ScenePlayer::Tick(float p_deltaTime)
 						"[ScenePlayer]   roiMap[%u] '%s': pos=(%.1f, %.1f, %.1f) vis=%d",
 						i,
 						m_roiMap[i]->GetName(),
-						l2w[3][0], l2w[3][1], l2w[3][2],
+						l2w[3][0],
+						l2w[3][1],
+						l2w[3][2],
 						(int) m_roiMap[i]->GetVisibility()
 					);
 				}
@@ -697,9 +765,6 @@ void ScenePlayer::CleanupProps()
 
 void ScenePlayer::RestoreVehicleROI()
 {
-	if (m_vehicleROI && !m_savedVehicleName.empty()) {
-		m_vehicleROI->SetName(m_savedVehicleName.c_str());
-		m_vehicleROI = nullptr;
-		m_savedVehicleName.clear();
-	}
+	m_vehicleROI = nullptr;
+	m_savedVehicleName.clear();
 }
