@@ -44,6 +44,8 @@ public:
 	void Stop();
 	bool IsPlaying() const { return m_playing; }
 
+	void PreloadAsync(uint32_t p_objectId) { m_loader.PreloadAsync(p_objectId); }
+
 private:
 	void ComputeRebaseMatrix();
 	void SetupROIs(const AnimInfo* p_animInfo);

@@ -1273,6 +1273,14 @@ void NetworkManager::TickHostSessions()
 
 		if (session->state == Animation::CoordinationState::e_interested && coLocated) {
 			m_animSessionHost.StartCountdown(animIndex);
+
+			if (m_animCoordinator.IsLocalPlayerInSession(animIndex)) {
+				const AnimInfo* ai = m_animCatalog.GetAnimInfo(animIndex);
+				if (ai) {
+					m_scenePlayer.PreloadAsync(ai->m_objectId);
+				}
+			}
+
 			BroadcastAnimUpdate(animIndex);
 			m_animStateDirty = true;
 		}
@@ -1374,6 +1382,14 @@ void NetworkManager::HandleAnimUpdate(const AnimUpdateMsg& p_msg)
 	ExtractSlotPeerIds(p_msg, slots);
 
 	m_animCoordinator.ApplySessionUpdate(p_msg.animIndex, p_msg.state, p_msg.countdownMs, slots, p_msg.slotCount);
+
+	if (p_msg.state == static_cast<uint8_t>(Animation::CoordinationState::e_countdown) &&
+		m_animCoordinator.IsLocalPlayerInSession(p_msg.animIndex)) {
+		const AnimInfo* ai = m_animCatalog.GetAnimInfo(p_msg.animIndex);
+		if (ai) {
+			m_scenePlayer.PreloadAsync(ai->m_objectId);
+		}
+	}
 
 	// If local player's pending interest matches, clear it (host has responded)
 	if (m_localPendingAnimInterest >= 0 && static_cast<uint16_t>(m_localPendingAnimInterest) == p_msg.animIndex) {

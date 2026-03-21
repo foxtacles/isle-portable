@@ -29,7 +29,12 @@ using Extensions::Common::CharacterCloner;
 // Defined in legoanimationmanager.cpp
 extern LegoAnimationManager::Character g_characters[47];
 
-enum VehicleCategory { e_bike, e_motorcycle, e_skateboard, e_unknownVehicle };
+enum VehicleCategory {
+	e_bike,
+	e_motorcycle,
+	e_skateboard,
+	e_unknownVehicle
+};
 
 static VehicleCategory GetVehicleCategory(MxU32 p_vehicleIdx)
 {
@@ -134,10 +139,7 @@ void ScenePlayer::SetupROIs(const AnimInfo* p_animInfo)
 				createdROIs.push_back(roi);
 			}
 		}
-		else if (
-			actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed ||
-			actorType == LegoAnimActorEntry::e_sceneRoi1 || actorType == LegoAnimActorEntry::e_sceneRoi2
-		) {
+		else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoiTrimmed || actorType == LegoAnimActorEntry::e_sceneRoi1 || actorType == LegoAnimActorEntry::e_sceneRoi2) {
 			createProp(lowered, AnimUtils::TrimLODSuffix(lowered).c_str());
 		}
 		else if (actorType == LegoAnimActorEntry::e_managedInvisibleRoi) {

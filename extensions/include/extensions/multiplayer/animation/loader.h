@@ -1,7 +1,10 @@
 #pragma once
 
+#include "mxcriticalsection.h"
+#include "mxthread.h"
 #include "mxwavepresenter.h"
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -76,17 +79,35 @@ public:
 
 	bool OpenSI();
 	SceneAnimData* EnsureCached(uint32_t p_objectId);
+	void PreloadAsync(uint32_t p_objectId);
 
 private:
+	class PreloadThread : public MxThread {
+	public:
+		PreloadThread(Loader* p_loader, uint32_t p_objectId);
+		MxResult Run() override;
+
+	private:
+		Loader* m_loader;
+		uint32_t m_objectId;
+	};
+
 	bool ReadObject(uint32_t p_objectId);
-	bool ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data);
-	bool ParseSoundChild(si::Object* p_child, SceneAnimData& p_data);
-	bool ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data);
+	static bool ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data);
+	static bool ParseSoundChild(si::Object* p_child, SceneAnimData& p_data);
+	static bool ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data);
+	static bool ParseComposite(si::Object* p_composite, SceneAnimData& p_data);
+	void CleanupPreloadThread();
 
 	si::File* m_siFile;
 	si::Interleaf* m_interleaf;
 	bool m_siReady;
 	std::map<uint32_t, SceneAnimData> m_cache;
+	MxCriticalSection m_cacheCS;
+
+	PreloadThread* m_preloadThread;
+	uint32_t m_preloadObjectId;
+	std::atomic<bool> m_preloadDone;
 };
 
 } // namespace Multiplayer::Animation

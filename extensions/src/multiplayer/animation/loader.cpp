@@ -4,6 +4,7 @@
 #include "extensions/common/pathutils.h"
 #include "flic.h"
 #include "misc/legostorage.h"
+#include "mxautolock.h"
 #include "mxwavepresenter.h"
 
 #include <SDL3/SDL_stdinc.h>
@@ -36,8 +37,7 @@ static void ParseExtraDirectives(const si::bytearray& p_extra, SceneAnimData& p_
 		size_t start = 0;
 		while (start < value.size()) {
 			size_t delim = value.find_first_of(":;", start);
-			std::string token =
-				(delim != std::string::npos) ? value.substr(start, delim - start) : value.substr(start);
+			std::string token = (delim != std::string::npos) ? value.substr(start, delim - start) : value.substr(start);
 
 			if (!token.empty()) {
 				p_data.ptAtCamNames.push_back(token);
@@ -95,12 +95,15 @@ SceneAnimData& SceneAnimData::operator=(SceneAnimData&& p_other) noexcept
 	return *this;
 }
 
-Loader::Loader() : m_siFile(nullptr), m_interleaf(nullptr), m_siReady(false)
+Loader::Loader()
+	: m_siFile(nullptr), m_interleaf(nullptr), m_siReady(false), m_preloadThread(nullptr), m_preloadObjectId(0),
+	  m_preloadDone(false)
 {
 }
 
 Loader::~Loader()
 {
+	CleanupPreloadThread();
 	delete m_interleaf;
 	delete m_siFile;
 }
@@ -278,11 +281,74 @@ bool Loader::ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data)
 	return true;
 }
 
+bool Loader::ParseComposite(si::Object* p_composite, SceneAnimData& p_data)
+{
+	bool hasAnim = false;
+
+	for (size_t i = 0; i < p_composite->GetChildCount(); i++) {
+		si::Object* child = static_cast<si::Object*>(p_composite->GetChildAt(i));
+
+		if (child->presenter_.find("LegoPhonemePresenter") != std::string::npos) {
+			ParsePhonemeChild(child, p_data);
+		}
+		else if (child->presenter_.find("LegoAnimPresenter") != std::string::npos || child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos) {
+			if (!hasAnim) {
+				if (ParseAnimationChild(child, p_data)) {
+					hasAnim = true;
+					ParseExtraDirectives(child->extra_, p_data);
+
+					// Extract action transform. Try child first, fall back to composite if zero.
+					si::Object* source = child;
+					if (SDL_fabs(child->direction_.x) < 1e-7 && SDL_fabs(child->direction_.y) < 1e-7 &&
+						SDL_fabs(child->direction_.z) < 1e-7) {
+						source = p_composite;
+					}
+
+					p_data.actionTransform.location[0] = (float) source->location_.x;
+					p_data.actionTransform.location[1] = (float) source->location_.y;
+					p_data.actionTransform.location[2] = (float) source->location_.z;
+					p_data.actionTransform.direction[0] = (float) source->direction_.x;
+					p_data.actionTransform.direction[1] = (float) source->direction_.y;
+					p_data.actionTransform.direction[2] = (float) source->direction_.z;
+					p_data.actionTransform.up[0] = (float) source->up_.x;
+					p_data.actionTransform.up[1] = (float) source->up_.y;
+					p_data.actionTransform.up[2] = (float) source->up_.z;
+
+					p_data.actionTransform.valid =
+						(SDL_fabsf(p_data.actionTransform.direction[0]) >= 0.00000047683716f ||
+						 SDL_fabsf(p_data.actionTransform.direction[1]) >= 0.00000047683716f ||
+						 SDL_fabsf(p_data.actionTransform.direction[2]) >= 0.00000047683716f);
+				}
+			}
+		}
+		else if (child->filetype() == si::MxOb::WAV) {
+			ParseSoundChild(child, p_data);
+		}
+	}
+
+	return hasAnim;
+}
+
 SceneAnimData* Loader::EnsureCached(uint32_t p_objectId)
 {
-	auto it = m_cache.find(p_objectId);
-	if (it != m_cache.end()) {
-		return &it->second;
+	{
+		AUTOLOCK(m_cacheCS);
+		auto it = m_cache.find(p_objectId);
+		if (it != m_cache.end()) {
+			return &it->second;
+		}
+	}
+
+	// If a preload is in progress for this object, wait for it to finish
+	if (m_preloadThread && m_preloadObjectId == p_objectId) {
+		CleanupPreloadThread();
+
+		AUTOLOCK(m_cacheCS);
+		auto it = m_cache.find(p_objectId);
+		if (it != m_cache.end()) {
+			return &it->second;
+		}
+		// Preload failed — fall through to synchronous load
 	}
 
 	if (!OpenSI()) {
@@ -296,56 +362,83 @@ SceneAnimData* Loader::EnsureCached(uint32_t p_objectId)
 	si::Object* composite = static_cast<si::Object*>(m_interleaf->GetChildAt(p_objectId));
 
 	SceneAnimData data;
-	bool hasAnim = false;
-
-	for (size_t i = 0; i < composite->GetChildCount(); i++) {
-		si::Object* child = static_cast<si::Object*>(composite->GetChildAt(i));
-
-		if (child->presenter_.find("LegoPhonemePresenter") != std::string::npos) {
-			ParsePhonemeChild(child, data);
-		}
-		else if (
-			child->presenter_.find("LegoAnimPresenter") != std::string::npos ||
-			child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos
-		) {
-			if (!hasAnim) {
-				if (ParseAnimationChild(child, data)) {
-					hasAnim = true;
-					ParseExtraDirectives(child->extra_, data);
-
-					// Extract action transform. Try child first, fall back to composite if zero.
-					si::Object* source = child;
-					if (SDL_fabs(child->direction_.x) < 1e-7 && SDL_fabs(child->direction_.y) < 1e-7 &&
-						SDL_fabs(child->direction_.z) < 1e-7) {
-						source = composite;
-					}
-
-					data.actionTransform.location[0] = (float) source->location_.x;
-					data.actionTransform.location[1] = (float) source->location_.y;
-					data.actionTransform.location[2] = (float) source->location_.z;
-					data.actionTransform.direction[0] = (float) source->direction_.x;
-					data.actionTransform.direction[1] = (float) source->direction_.y;
-					data.actionTransform.direction[2] = (float) source->direction_.z;
-					data.actionTransform.up[0] = (float) source->up_.x;
-					data.actionTransform.up[1] = (float) source->up_.y;
-					data.actionTransform.up[2] = (float) source->up_.z;
-
-					data.actionTransform.valid =
-						(SDL_fabsf(data.actionTransform.direction[0]) >= 0.00000047683716f ||
-						 SDL_fabsf(data.actionTransform.direction[1]) >= 0.00000047683716f ||
-						 SDL_fabsf(data.actionTransform.direction[2]) >= 0.00000047683716f);
-				}
-			}
-		}
-		else if (child->filetype() == si::MxOb::WAV) {
-			ParseSoundChild(child, data);
-		}
-	}
-
-	if (!hasAnim) {
+	if (!ParseComposite(composite, data)) {
 		return nullptr;
 	}
 
+	AUTOLOCK(m_cacheCS);
 	auto result = m_cache.emplace(p_objectId, std::move(data));
 	return &result.first->second;
+}
+
+void Loader::CleanupPreloadThread()
+{
+	if (m_preloadThread) {
+		delete m_preloadThread;
+		m_preloadThread = nullptr;
+	}
+}
+
+void Loader::PreloadAsync(uint32_t p_objectId)
+{
+	{
+		AUTOLOCK(m_cacheCS);
+		if (m_cache.find(p_objectId) != m_cache.end()) {
+			return;
+		}
+	}
+
+	if (m_preloadThread && m_preloadObjectId == p_objectId && !m_preloadDone) {
+		return;
+	}
+
+	CleanupPreloadThread();
+
+	m_preloadObjectId = p_objectId;
+	m_preloadDone = false;
+	m_preloadThread = new PreloadThread(this, p_objectId);
+	m_preloadThread->Start(0x1000, 0);
+}
+
+Loader::PreloadThread::PreloadThread(Loader* p_loader, uint32_t p_objectId) : m_loader(p_loader), m_objectId(p_objectId)
+{
+}
+
+MxResult Loader::PreloadThread::Run()
+{
+	si::File* siFile = new si::File();
+
+	MxString path;
+	if (!Extensions::Common::ResolveGamePath("\\lego\\scripts\\isle\\isle.si", path) ||
+		!siFile->Open(path.GetData(), si::File::Read)) {
+		delete siFile;
+		m_loader->m_preloadDone = true;
+		return MxThread::Run();
+	}
+
+	si::Interleaf* interleaf = new si::Interleaf();
+	if (interleaf->Read(siFile, si::Interleaf::HeaderOnly) != si::Interleaf::ERROR_SUCCESS) {
+		delete interleaf;
+		delete siFile;
+		m_loader->m_preloadDone = true;
+		return MxThread::Run();
+	}
+
+	size_t childCount = interleaf->GetChildCount();
+	if (m_objectId < childCount && interleaf->ReadObject(siFile, m_objectId) == si::Interleaf::ERROR_SUCCESS) {
+		si::Object* composite = static_cast<si::Object*>(interleaf->GetChildAt(m_objectId));
+
+		SceneAnimData data;
+		if (ParseComposite(composite, data)) {
+			AUTOLOCK(m_loader->m_cacheCS);
+			m_loader->m_cache.emplace(m_objectId, std::move(data));
+		}
+	}
+
+	m_loader->m_preloadDone = true;
+
+	delete interleaf;
+	delete siFile;
+
+	return MxThread::Run();
 }
