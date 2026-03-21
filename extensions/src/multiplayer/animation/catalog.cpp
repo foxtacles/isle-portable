@@ -84,21 +84,6 @@ void Catalog::Refresh(LegoAnimationManager* p_am)
 		m_locationIndex[entry.location].push_back(idx);
 	}
 
-	// Log catalog summary
-	int npcCount = 0, camCount = 0, otherCount = 0;
-	for (const auto& e : m_entries) {
-		switch (e.category) {
-		case e_npcAnim:
-			npcCount++;
-			break;
-		case e_camAnim:
-			camCount++;
-			break;
-		case e_otherAnim:
-			otherCount++;
-			break;
-		}
-	}
 }
 
 const AnimInfo* Catalog::GetAnimInfo(uint16_t p_animIndex) const

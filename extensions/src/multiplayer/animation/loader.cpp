@@ -6,46 +6,38 @@
 #include "misc/legostorage.h"
 #include "mxwavepresenter.h"
 
-#include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 #include <file.h>
 #include <interleaf.h>
 
 using namespace Multiplayer::Animation;
 
-// Parse animation directives from SI "extra" field.
-// Mirrors LegoAnimPresenter::ParseExtra() for the directives we need.
 static void ParseExtraDirectives(const si::bytearray& p_extra, SceneAnimData& p_data)
 {
 	if (p_extra.empty()) {
 		return;
 	}
 
-	// Convert to null-terminated string
 	std::string extra(p_extra.data(), p_extra.size());
 	while (!extra.empty() && extra.back() == '\0') {
 		extra.pop_back();
 	}
 
-	// HIDE_ON_STOP (presence check, no value needed)
 	if (extra.find("HIDE_ON_STOP") != std::string::npos) {
 		p_data.hideOnStop = true;
 	}
 
-	// PTATCAM=name1:name2:name3 (tokenize on :;)
 	size_t pos = extra.find("PTATCAM=");
 	if (pos != std::string::npos) {
-		pos += 8; // skip "PTATCAM="
-
-		// Find end of value (next space or end of string)
+		pos += 8;
 		size_t end = extra.find(' ', pos);
 		std::string value = (end != std::string::npos) ? extra.substr(pos, end - pos) : extra.substr(pos);
 
-		// Tokenize on : and ;
 		size_t start = 0;
 		while (start < value.size()) {
 			size_t delim = value.find_first_of(":;", start);
-			std::string token = (delim != std::string::npos) ? value.substr(start, delim - start) : value.substr(start);
+			std::string token =
+				(delim != std::string::npos) ? value.substr(start, delim - start) : value.substr(start);
 
 			if (!token.empty()) {
 				p_data.ptAtCamNames.push_back(token);
@@ -56,12 +48,8 @@ static void ParseExtraDirectives(const si::bytearray& p_extra, SceneAnimData& p_
 	}
 }
 
-SceneAnimData::SceneAnimData() : anim(nullptr), duration(0.0f), boundingRadius(0.0f), hasActionTransform(false), hideOnStop(false)
+SceneAnimData::SceneAnimData() : anim(nullptr), duration(0.0f), actionTransform{}, hideOnStop(false)
 {
-	centerPoint[0] = centerPoint[1] = centerPoint[2] = 0.0f;
-	actionLocation[0] = actionLocation[1] = actionLocation[2] = 0.0f;
-	actionDirection[0] = actionDirection[1] = actionDirection[2] = 0.0f;
-	actionUp[0] = actionUp[1] = actionUp[2] = 0.0f;
 }
 
 SceneAnimData::~SceneAnimData()
@@ -82,17 +70,10 @@ void SceneAnimData::ReleaseTracks()
 }
 
 SceneAnimData::SceneAnimData(SceneAnimData&& p_other) noexcept
-	: anim(p_other.anim), duration(p_other.duration), boundingRadius(p_other.boundingRadius),
-	  audioTracks(std::move(p_other.audioTracks)), phonemeTracks(std::move(p_other.phonemeTracks)),
-	  hasActionTransform(p_other.hasActionTransform),
+	: anim(p_other.anim), duration(p_other.duration), audioTracks(std::move(p_other.audioTracks)),
+	  phonemeTracks(std::move(p_other.phonemeTracks)), actionTransform(p_other.actionTransform),
 	  ptAtCamNames(std::move(p_other.ptAtCamNames)), hideOnStop(p_other.hideOnStop)
 {
-	centerPoint[0] = p_other.centerPoint[0];
-	centerPoint[1] = p_other.centerPoint[1];
-	centerPoint[2] = p_other.centerPoint[2];
-	SDL_memcpy(actionLocation, p_other.actionLocation, sizeof(actionLocation));
-	SDL_memcpy(actionDirection, p_other.actionDirection, sizeof(actionDirection));
-	SDL_memcpy(actionUp, p_other.actionUp, sizeof(actionUp));
 	p_other.anim = nullptr;
 }
 
@@ -104,16 +85,9 @@ SceneAnimData& SceneAnimData::operator=(SceneAnimData&& p_other) noexcept
 
 		anim = p_other.anim;
 		duration = p_other.duration;
-		boundingRadius = p_other.boundingRadius;
-		centerPoint[0] = p_other.centerPoint[0];
-		centerPoint[1] = p_other.centerPoint[1];
-		centerPoint[2] = p_other.centerPoint[2];
 		audioTracks = std::move(p_other.audioTracks);
 		phonemeTracks = std::move(p_other.phonemeTracks);
-		hasActionTransform = p_other.hasActionTransform;
-		SDL_memcpy(actionLocation, p_other.actionLocation, sizeof(actionLocation));
-		SDL_memcpy(actionDirection, p_other.actionDirection, sizeof(actionDirection));
-		SDL_memcpy(actionUp, p_other.actionUp, sizeof(actionUp));
+		actionTransform = p_other.actionTransform;
 		ptAtCamNames = std::move(p_other.ptAtCamNames);
 		hideOnStop = p_other.hideOnStop;
 		p_other.anim = nullptr;
@@ -137,7 +111,6 @@ bool Loader::OpenSI()
 		return true;
 	}
 
-	// Path matches islefiles.cpp entry: /LEGO/Scripts/Isle/ISLE.SI
 	m_siFile = new si::File();
 
 	MxString path;
@@ -193,7 +166,6 @@ bool Loader::ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data)
 		return false;
 	}
 
-	// Parse per LegoAnimPresenter::CreateAnim (legoanimpresenter.cpp:145-193)
 	LegoMemory storage(firstChunk.data(), (LegoU32) firstChunk.size());
 
 	MxS32 magicSig;
@@ -201,18 +173,10 @@ bool Loader::ParseAnimationChild(si::Object* p_child, SceneAnimData& p_data)
 		return false;
 	}
 
-	if (storage.Read(&p_data.boundingRadius, sizeof(float)) != SUCCESS) {
-		return false;
-	}
-	if (storage.Read(&p_data.centerPoint[0], sizeof(float)) != SUCCESS) {
-		return false;
-	}
-	if (storage.Read(&p_data.centerPoint[1], sizeof(float)) != SUCCESS) {
-		return false;
-	}
-	if (storage.Read(&p_data.centerPoint[2], sizeof(float)) != SUCCESS) {
-		return false;
-	}
+	// Skip boundingRadius + centerPoint[3] (unused, but present in the binary format)
+	LegoU32 pos;
+	storage.GetPosition(pos);
+	storage.SetPosition(pos + 4 * sizeof(float));
 
 	LegoS32 parseScene = 0;
 	MxS32 val3;
@@ -241,11 +205,7 @@ bool Loader::ParseSoundChild(si::Object* p_child, SceneAnimData& p_data)
 		return false;
 	}
 
-	// In the SI streaming format:
-	// - data_[0] is the raw MxWavePresenter::WaveFormat struct (24 bytes)
-	//   (see MxWavePresenter::ReadyTickle which memcpy's the first chunk directly)
-	// - data_[1..N] are raw PCM audio data blocks
-
+	// data_[0] = WaveFormat header, data_[1..N] = raw PCM blocks
 	const auto& header = chunks[0];
 	if (header.size() < sizeof(MxWavePresenter::WaveFormat)) {
 		return false;
@@ -259,7 +219,6 @@ bool Loader::ParseSoundChild(si::Object* p_child, SceneAnimData& p_data)
 	track.timeOffset = p_child->time_offset_;
 	track.mediaSrcPath = p_child->filename_;
 
-	// Concatenate data_[1..N] as raw PCM
 	MxU32 totalPcm = 0;
 	for (size_t i = 1; i < chunks.size(); i++) {
 		totalPcm += (MxU32) chunks[i].size();
@@ -291,7 +250,6 @@ bool Loader::ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data)
 
 	SceneAnimData::PhonemeTrack track;
 
-	// data_[0] = FLIC_HEADER
 	const auto& headerChunk = chunks[0];
 	if (headerChunk.size() < sizeof(FLIC_HEADER)) {
 		return false;
@@ -303,15 +261,12 @@ bool Loader::ParsePhonemeChild(si::Object* p_child, SceneAnimData& p_data)
 	track.width = track.flcHeader->width;
 	track.height = track.flcHeader->height;
 
-	// data_[1..N] = frame chunks
 	for (size_t i = 1; i < chunks.size(); i++) {
 		track.frameData.push_back(chunks[i]);
 	}
 
-	// extra_ = ROI name
 	if (!p_child->extra_.empty()) {
 		track.roiName = std::string(p_child->extra_.data(), p_child->extra_.size());
-		// Trim null terminators
 		while (!track.roiName.empty() && track.roiName.back() == '\0') {
 			track.roiName.pop_back();
 		}
@@ -346,53 +301,39 @@ SceneAnimData* Loader::EnsureCached(uint32_t p_objectId)
 	for (size_t i = 0; i < composite->GetChildCount(); i++) {
 		si::Object* child = static_cast<si::Object*>(composite->GetChildAt(i));
 
-		// Match children by presenter name (types vary: Animation=9, Object=11, Video=3, Sound=4)
 		if (child->presenter_.find("LegoPhonemePresenter") != std::string::npos) {
 			ParsePhonemeChild(child, data);
 		}
-		else if (child->presenter_.find("LegoAnimPresenter") != std::string::npos || child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos) {
+		else if (
+			child->presenter_.find("LegoAnimPresenter") != std::string::npos ||
+			child->presenter_.find("LegoLoopingAnimPresenter") != std::string::npos
+		) {
 			if (!hasAnim) {
 				if (ParseAnimationChild(child, data)) {
 					hasAnim = true;
 					ParseExtraDirectives(child->extra_, data);
 
-					// Extract action location/direction/up — same fields the original
-					// game reads via m_action->GetLocation/Direction/Up in StartingTickle.
-					// Try the child first, fall back to the composite parent if zero.
+					// Extract action transform. Try child first, fall back to composite if zero.
 					si::Object* source = child;
-					if (SDL_fabs(child->direction_.x) < 1e-7 &&
-						SDL_fabs(child->direction_.y) < 1e-7 &&
+					if (SDL_fabs(child->direction_.x) < 1e-7 && SDL_fabs(child->direction_.y) < 1e-7 &&
 						SDL_fabs(child->direction_.z) < 1e-7) {
 						source = composite;
 					}
 
-					data.actionLocation[0] = (float) source->location_.x;
-					data.actionLocation[1] = (float) source->location_.y;
-					data.actionLocation[2] = (float) source->location_.z;
-					data.actionDirection[0] = (float) source->direction_.x;
-					data.actionDirection[1] = (float) source->direction_.y;
-					data.actionDirection[2] = (float) source->direction_.z;
-					data.actionUp[0] = (float) source->up_.x;
-					data.actionUp[1] = (float) source->up_.y;
-					data.actionUp[2] = (float) source->up_.z;
+					data.actionTransform.location[0] = (float) source->location_.x;
+					data.actionTransform.location[1] = (float) source->location_.y;
+					data.actionTransform.location[2] = (float) source->location_.z;
+					data.actionTransform.direction[0] = (float) source->direction_.x;
+					data.actionTransform.direction[1] = (float) source->direction_.y;
+					data.actionTransform.direction[2] = (float) source->direction_.z;
+					data.actionTransform.up[0] = (float) source->up_.x;
+					data.actionTransform.up[1] = (float) source->up_.y;
+					data.actionTransform.up[2] = (float) source->up_.z;
 
-					// Check if the action has a non-zero direction (same check as StartingTickle)
-					data.hasActionTransform =
-						(SDL_fabsf(data.actionDirection[0]) >= 0.00000047683716f ||
-						 SDL_fabsf(data.actionDirection[1]) >= 0.00000047683716f ||
-						 SDL_fabsf(data.actionDirection[2]) >= 0.00000047683716f);
-
-					SDL_Log(
-						"[Loader] anim objectId=%u child loc=(%.2f,%.2f,%.2f) dir=(%.2f,%.2f,%.2f) | "
-						"composite loc=(%.2f,%.2f,%.2f) dir=(%.2f,%.2f,%.2f) | using=%s hasTransform=%d",
-						p_objectId,
-						(float) child->location_.x, (float) child->location_.y, (float) child->location_.z,
-						(float) child->direction_.x, (float) child->direction_.y, (float) child->direction_.z,
-						(float) composite->location_.x, (float) composite->location_.y, (float) composite->location_.z,
-						(float) composite->direction_.x, (float) composite->direction_.y, (float) composite->direction_.z,
-						(source == composite) ? "composite" : "child",
-						(int) data.hasActionTransform
-					);
+					data.actionTransform.valid =
+						(SDL_fabsf(data.actionTransform.direction[0]) >= 0.00000047683716f ||
+						 SDL_fabsf(data.actionTransform.direction[1]) >= 0.00000047683716f ||
+						 SDL_fabsf(data.actionTransform.direction[2]) >= 0.00000047683716f);
 				}
 			}
 		}

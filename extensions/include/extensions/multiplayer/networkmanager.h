@@ -204,7 +204,8 @@ private:
 	Multiplayer::Animation::SessionHost m_animSessionHost;
 	int32_t m_localPendingAnimInterest;
 
-	void TickAnimation(float p_deltaTime);
+	void TickAnimation();
+	void StopScenePlayback(bool p_unlockRemotes);
 
 	// Animation state push
 	bool m_animStateDirty;

@@ -3,7 +3,7 @@
 #include "extensions/multiplayer/animation/catalog.h"
 #include "legoanimationmanager.h"
 
-#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_timer.h>
 
 using namespace Multiplayer::Animation;
 
@@ -133,12 +133,13 @@ std::vector<EligibilityInfo> Coordinator::ComputeEligibility(
 
 		BuildSlots(entry, filledPerformers, spectatorFilled, info.slots);
 
-		// Override slot fills with authoritative session data if available
+		// Override slot fills with authoritative session data
 		auto sessionIt = m_sessions.find(entry->animIndex);
 		if (sessionIt != m_sessions.end()) {
 			const SessionView& sv = sessionIt->second;
-			uint8_t count = sv.slotCount < info.slots.size() ? sv.slotCount : static_cast<uint8_t>(info.slots.size());
-			for (uint8_t s = 0; s < count; s++) {
+			uint8_t slotCount =
+				sv.slotCount < info.slots.size() ? sv.slotCount : static_cast<uint8_t>(info.slots.size());
+			for (uint8_t s = 0; s < slotCount; s++) {
 				info.slots[s].filled = (sv.peerSlots[s] != 0);
 			}
 		}

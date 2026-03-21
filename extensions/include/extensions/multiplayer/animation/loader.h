@@ -20,12 +20,9 @@ class Object;
 namespace Multiplayer::Animation
 {
 
-// Extracted animation data from ISLE.SI
 struct SceneAnimData {
 	LegoAnim* anim;
 	float duration;
-	float boundingRadius;
-	float centerPoint[3];
 
 	struct AudioTrack {
 		MxU8* pcmData;
@@ -39,23 +36,23 @@ struct SceneAnimData {
 
 	struct PhonemeTrack {
 		FLIC_HEADER* flcHeader;
-		std::vector<std::vector<char>> frameData; // data_[1..N] raw (includes rect prefix)
+		std::vector<std::vector<char>> frameData;
 		uint32_t timeOffset;
 		std::string roiName;
 		uint16_t width, height;
 	};
 	std::vector<PhonemeTrack> phonemeTracks;
 
-	// Action location/direction/up from SI metadata (same fields the original
-	// game reads via m_action->GetLocation/Direction/Up in StartingTickle)
-	float actionLocation[3];
-	float actionDirection[3];
-	float actionUp[3];
-	bool hasActionTransform;
+	// Action transform from SI metadata (location/direction/up)
+	struct {
+		float location[3];
+		float direction[3];
+		float up[3];
+		bool valid;
+	} actionTransform;
 
-	// Directives from SI "extra" field (parsed from LegoAnimPresenter child)
-	std::vector<std::string> ptAtCamNames; // ROI names from PTATCAM=name1:name2
-	bool hideOnStop = false;               // HIDE_ON_STOP directive
+	std::vector<std::string> ptAtCamNames; // ROI names from PTATCAM directive
+	bool hideOnStop;
 
 	SceneAnimData();
 	~SceneAnimData();
@@ -69,24 +66,15 @@ private:
 	void ReleaseTracks();
 };
 
-// Owns the SI file handle, reads objects on demand, parses animation/sound/phoneme
-// data, and caches results. Bypasses the streaming pipeline and its singleplayer
-// side effects.
-//
-// SI reading strategy: reads only the RIFF header + MxOf offset table
-// (contiguous at file start, one fetch). Then for each requested object,
-// seeks to its MxSt offset and reads just that one object tree + data
-// (one more fetch per object). This avoids the ObjectsOnly scan which
-// would touch hundreds of offsets across the file.
+// Loads animation data from ISLE.SI on demand, bypassing the streaming pipeline.
+// Reads only the RIFF header + offset table on first open, then seeks to
+// individual objects as requested.
 class Loader {
 public:
 	Loader();
 	~Loader();
 
-	// Open ISLE.SI and read only the offset table (cheap)
 	bool OpenSI();
-
-	// Animation data extraction and caching
 	SceneAnimData* EnsureCached(uint32_t p_objectId);
 
 private:

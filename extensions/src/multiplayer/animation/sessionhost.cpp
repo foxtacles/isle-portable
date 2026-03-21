@@ -38,14 +38,12 @@ AnimSession SessionHost::CreateSession(const CatalogEntry* p_entry, uint16_t p_a
 		SessionSlot slot;
 		slot.peerId = 0;
 		slot.charIndex = i;
-		slot.isSpectator = false;
 		session.slots.push_back(slot);
 	}
 
 	SessionSlot spectatorSlot;
 	spectatorSlot.peerId = 0;
 	spectatorSlot.charIndex = -1;
-	spectatorSlot.isSpectator = true;
 	session.slots.push_back(spectatorSlot);
 
 	return session;
@@ -61,7 +59,7 @@ bool SessionHost::TryAssignSlot(AnimSession& p_session, uint32_t p_peerId, int8_
 
 	// Performer slots first
 	for (auto& slot : p_session.slots) {
-		if (!slot.isSpectator && slot.peerId == 0 && slot.charIndex == p_charIndex) {
+		if (!slot.IsSpectator() && slot.peerId == 0 && slot.charIndex == p_charIndex) {
 			slot.peerId = p_peerId;
 			return true;
 		}
@@ -78,7 +76,7 @@ bool SessionHost::TryAssignSlot(AnimSession& p_session, uint32_t p_peerId, int8_
 	}
 
 	for (auto& slot : p_session.slots) {
-		if (slot.isSpectator && slot.peerId == 0) {
+		if (slot.IsSpectator() && slot.peerId == 0) {
 			if (p_charIndex >= 0 && !((entry->performerMask >> p_charIndex) & 1)) {
 				bool allowed = false;
 				if (p_charIndex < CORE_CHARACTER_COUNT) {

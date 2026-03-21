@@ -21,8 +21,6 @@ public:
 	// Stop and delete all sounds
 	void Cleanup();
 
-	bool HasActiveSounds() const { return !m_activeSounds.empty(); }
-
 private:
 	struct ActiveSound {
 		LegoCacheSound* sound;

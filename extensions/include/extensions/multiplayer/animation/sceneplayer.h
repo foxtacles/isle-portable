@@ -23,8 +23,9 @@ struct ParticipantROI {
 	LegoROI* vehicleROI; // Ride vehicle ROI (bike/board/moto), or nullptr
 	MxMatrix savedTransform;
 	std::string savedName;
-	int8_t charIndex; // g_characters[] index this slot requires (-1 for spectator)
-	bool isSpectator;
+	int8_t charIndex; // g_characters[] index, or -1 for spectator
+
+	bool IsSpectator() const { return charIndex < 0; }
 };
 
 class ScenePlayer {
@@ -32,25 +33,23 @@ public:
 	ScenePlayer();
 	~ScenePlayer();
 
+	// p_participants[0] must be the local player
 	void Play(
 		const AnimInfo* p_animInfo,
 		AnimCategory p_category,
-		LegoROI* p_localROI,
-		LegoROI* p_vehicleROI,
 		const ParticipantROI* p_participants,
 		uint8_t p_participantCount
 	);
-	void Tick(float p_deltaTime);
+	void Tick();
 	void Stop();
 	bool IsPlaying() const { return m_playing; }
 
 private:
 	void ComputeRebaseMatrix();
-	void SetupROIs(const AnimInfo* p_animInfo, LegoROI* p_localROI, LegoROI* p_vehicleROI);
+	void SetupROIs(const AnimInfo* p_animInfo);
 	void ResolvePtAtCamROIs();
 	void ApplyPtAtCam();
 	void CleanupProps();
-	void RestoreVehicleROI();
 
 	// Sub-components
 	Loader m_loader;
@@ -69,36 +68,25 @@ private:
 	// Participants (local player at index 0, remote players after)
 	std::vector<ParticipantROI> m_participants;
 
-	// The root performer ROI for the animation (used for rebase in npc_anims)
+	// Root performer ROI (rebase anchor for NPC anims)
 	LegoROI* m_animRootROI;
 
-	// Vehicle ROI (borrowed, renamed during playback)
+	// Vehicle ROI borrowed from a participant during playback
 	LegoROI* m_vehicleROI;
-	std::string m_savedVehicleName;
 
-	// Player's ride vehicle ROI hidden during cam_anim (not borrowed, just hidden)
+	// Player's ride vehicle hidden during cam_anim (not borrowed, just hidden)
 	LegoROI* m_hiddenVehicleROI;
 
 	// ROI map for skeletal animation
 	LegoROI** m_roiMap;
 	MxU32 m_roiMapSize;
 
-	// Extra ROIs created for the animation (props and unmatched characters)
-	LegoROI** m_propROIs;
-	uint8_t m_propCount;
+	// Props created for the animation (cloned characters and prop models)
+	std::vector<LegoROI*> m_propROIs;
 
-
-	// Camera animation (cam_anim only)
 	bool m_hasCamAnim;
-
-	// PTATCAM
 	std::vector<LegoROI*> m_ptAtCamROIs;
-
-	// HIDE_ON_STOP
 	bool m_hideOnStop;
-
-	// Debug
-	bool m_debugFirstTickLogged;
 };
 
 } // namespace Multiplayer::Animation

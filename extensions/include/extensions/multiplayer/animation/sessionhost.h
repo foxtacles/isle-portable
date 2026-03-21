@@ -12,9 +12,10 @@ struct CatalogEntry;
 enum class CoordinationState : uint8_t;
 
 struct SessionSlot {
-	uint32_t peerId;   // 0 = unfilled
-	int8_t charIndex;  // g_characters index needed, or -1 for spectator "any"
-	bool isSpectator;  // Is this the spectator slot?
+	uint32_t peerId;  // 0 = unfilled
+	int8_t charIndex; // g_characters index, or -1 for spectator
+
+	bool IsSpectator() const { return charIndex < 0; }
 };
 
 struct AnimSession {
@@ -28,7 +29,6 @@ class SessionHost {
 public:
 	void SetCatalog(const Catalog* p_catalog);
 
-	// Handle events; p_changedAnims receives indices of sessions that changed (for broadcasting)
 	bool HandleInterest(
 		uint32_t p_peerId,
 		uint16_t p_animIndex,
@@ -37,31 +37,25 @@ public:
 	bool HandleCancel(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims);
 	bool HandlePlayerRemoved(uint32_t p_peerId, std::vector<uint16_t>& p_changedAnims);
 
-	// Tick countdown timers. Returns animIndex of session ready to play, or ANIM_INDEX_NONE.
+	// Returns animIndex of session ready to play, or ANIM_INDEX_NONE
 	uint16_t Tick(uint32_t p_now);
 
-	// Countdown control — called by NetworkManager after co-location checks
 	void StartCountdown(uint16_t p_animIndex);
 	void RevertCountdown(uint16_t p_animIndex);
 
 	void Reset();
 	void EraseSession(uint16_t p_animIndex);
 
-	// Access for broadcasting
 	const AnimSession* FindSession(uint16_t p_animIndex) const;
 	const std::map<uint16_t, AnimSession>& GetSessions() const;
 	bool AreAllSlotsFilled(uint16_t p_animIndex) const;
 
-	// Compute countdownMs remaining for a session
 	static uint16_t ComputeCountdownMs(const AnimSession& p_session, uint32_t p_now);
 
 	// Reconstruct slot charIndex assignments from CatalogEntry::performerMask.
-	// Same iteration order as CreateSession: bit 0 first, then bit 1, ...,
-	// spectator last with charIndex=-1. Both host and client have the same
-	// CatalogEntry, so this is deterministic without protocol changes.
+	// Same iteration order as CreateSession — deterministic across all clients.
 	static std::vector<int8_t> ComputeSlotCharIndices(const CatalogEntry* p_entry);
 
-	// Returns true if any session is in countdown state
 	bool HasCountdownSession() const;
 
 private:
