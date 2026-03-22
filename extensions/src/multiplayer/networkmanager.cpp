@@ -1658,15 +1658,15 @@ void NetworkManager::BroadcastAnimComplete(uint16_t p_animIndex)
 void NetworkManager::HandleAnimComplete(const AnimCompleteMsg& p_msg)
 {
 	// Only fire callback for actual participants, not observers
-	bool localParticipated = false;
+	int localIdx = -1;
 	for (uint8_t i = 0; i < p_msg.participantCount; i++) {
 		if (p_msg.participants[i].peerId == m_localPeerId) {
-			localParticipated = true;
+			localIdx = i;
 			break;
 		}
 	}
 
-	if (!localParticipated || !m_callbacks) {
+	if (localIdx < 0 || !m_callbacks) {
 		return;
 	}
 
@@ -1682,22 +1682,30 @@ void NetworkManager::HandleAnimComplete(const AnimCompleteMsg& p_msg)
 	json += std::to_string(p_msg.objectId);
 	json += ",\"participants\":[";
 
-	for (uint8_t i = 0; i < p_msg.participantCount; i++) {
-		if (i > 0) {
+	// Emit local player first so frontend can rely on participants[0] being self
+	bool first = true;
+	auto appendParticipant = [&](uint8_t i) {
+		if (!first) {
 			json += ',';
 		}
+		first = false;
 		const AnimCompletionParticipant& p = p_msg.participants[i];
-
-		// Escape displayName (7 chars max, ASCII only)
-		char safeName[8];
-		SDL_memcpy(safeName, p.displayName, sizeof(safeName));
-		safeName[7] = '\0';
-
+		// Ensure null-termination safety for displayName (protocol uses fixed char[8])
+		char name[8];
+		SDL_memcpy(name, p.displayName, sizeof(name));
+		name[7] = '\0';
 		json += "{\"charIndex\":";
 		json += std::to_string(static_cast<int>(p.charIndex));
 		json += ",\"displayName\":\"";
-		json += safeName;
+		json += name;
 		json += "\"}";
+	};
+
+	appendParticipant(static_cast<uint8_t>(localIdx));
+	for (uint8_t i = 0; i < p_msg.participantCount; i++) {
+		if (i != static_cast<uint8_t>(localIdx)) {
+			appendParticipant(i);
+		}
 	}
 
 	json += "]}";
