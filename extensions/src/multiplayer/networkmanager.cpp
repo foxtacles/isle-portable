@@ -858,6 +858,13 @@ void NetworkManager::ProcessIncomingPackets()
 			}
 			break;
 		}
+		case MSG_ANIM_COMPLETE: {
+			AnimCompleteMsg msg;
+			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_COMPLETE) {
+				HandleAnimComplete(msg);
+			}
+			break;
+		}
 		default:
 			break;
 		}
@@ -1224,6 +1231,7 @@ void NetworkManager::TickAnimation()
 		}
 
 		if (IsHost() && m_playingAnimIndex != Animation::ANIM_INDEX_NONE) {
+			BroadcastAnimComplete(m_playingAnimIndex); // Must fire before EraseSession destroys participant data
 			m_animSessionHost.EraseSession(m_playingAnimIndex);
 			BroadcastAnimUpdate(m_playingAnimIndex); // Broadcast cleared state
 		}
@@ -1577,6 +1585,124 @@ void NetworkManager::BroadcastAnimStart(uint16_t p_animIndex)
 
 	// Also update local coordinator
 	m_animCoordinator.ApplyAnimStart(p_animIndex);
+}
+
+void NetworkManager::BroadcastAnimComplete(uint16_t p_animIndex)
+{
+	const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
+	if (!session) {
+		return;
+	}
+
+	const AnimInfo* animInfo = m_animCatalog.GetAnimInfo(p_animIndex);
+	if (!animInfo) {
+		return;
+	}
+
+	AnimCompleteMsg msg{};
+	msg.header = {MSG_ANIM_COMPLETE, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.eventId = (static_cast<uint64_t>(SDL_rand_bits()) << 32) | static_cast<uint64_t>(SDL_rand_bits());
+	msg.objectId = animInfo->m_objectId;
+	msg.participantCount = 0;
+
+	char localName[8];
+	EncodeUsername(localName);
+
+	for (const auto& slot : session->slots) {
+		if (slot.peerId == 0 || msg.participantCount >= 8) {
+			continue;
+		}
+
+		AnimCompletionParticipant& p = msg.participants[msg.participantCount];
+		p.peerId = slot.peerId;
+
+		if (slot.IsSpectator()) {
+			// Resolve spectator's actual character from their display actor
+			if (slot.peerId == m_localPeerId) {
+				ThirdPersonCamera::Controller* cam = GetCamera();
+				p.charIndex = cam ? Animation::Catalog::DisplayActorToCharacterIndex(cam->GetDisplayActorIndex()) : -1;
+			}
+			else {
+				auto it = m_remotePlayers.find(slot.peerId);
+				p.charIndex = it != m_remotePlayers.end()
+					? Animation::Catalog::DisplayActorToCharacterIndex(it->second->GetDisplayActorIndex())
+					: -1;
+			}
+		}
+		else {
+			p.charIndex = slot.charIndex;
+		}
+
+		if (slot.peerId == m_localPeerId) {
+			SDL_memcpy(p.displayName, localName, sizeof(p.displayName));
+		}
+		else {
+			auto it = m_remotePlayers.find(slot.peerId);
+			if (it != m_remotePlayers.end()) {
+				SDL_memcpy(p.displayName, it->second->GetDisplayName(), sizeof(p.displayName));
+			}
+			else {
+				p.displayName[0] = '\0';
+			}
+		}
+
+		msg.participantCount++;
+	}
+
+	SendMessage(msg);
+
+	// Also handle locally on the host (message sent to TARGET_BROADCAST excludes sender)
+	HandleAnimComplete(msg);
+}
+
+void NetworkManager::HandleAnimComplete(const AnimCompleteMsg& p_msg)
+{
+	// Only fire callback for actual participants, not observers
+	bool localParticipated = false;
+	for (uint8_t i = 0; i < p_msg.participantCount; i++) {
+		if (p_msg.participants[i].peerId == m_localPeerId) {
+			localParticipated = true;
+			break;
+		}
+	}
+
+	if (!localParticipated || !m_callbacks) {
+		return;
+	}
+
+	// Build JSON for frontend
+	char eventIdHex[17];
+	SDL_snprintf(eventIdHex, sizeof(eventIdHex), "%08x%08x",
+		static_cast<uint32_t>(p_msg.eventId >> 32),
+		static_cast<uint32_t>(p_msg.eventId & 0xFFFFFFFF));
+
+	std::string json = "{\"eventId\":\"";
+	json += eventIdHex;
+	json += "\",\"objectId\":";
+	json += std::to_string(p_msg.objectId);
+	json += ",\"participants\":[";
+
+	for (uint8_t i = 0; i < p_msg.participantCount; i++) {
+		if (i > 0) {
+			json += ',';
+		}
+		const AnimCompletionParticipant& p = p_msg.participants[i];
+
+		// Escape displayName (7 chars max, ASCII only)
+		char safeName[8];
+		SDL_memcpy(safeName, p.displayName, sizeof(safeName));
+		safeName[7] = '\0';
+
+		json += "{\"charIndex\":";
+		json += std::to_string(static_cast<int>(p.charIndex));
+		json += ",\"displayName\":\"";
+		json += safeName;
+		json += "\"}";
+	}
+
+	json += "]}";
+
+	m_callbacks->OnAnimationCompleted(json.c_str());
 }
 
 int16_t NetworkManager::GetPeerLocation(uint32_t p_peerId) const
