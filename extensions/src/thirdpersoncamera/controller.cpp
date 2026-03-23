@@ -400,7 +400,7 @@ MxBool Controller::HandleCameraRelativeMovement(
 		p_newDir,
 		p_deltaTime,
 		m_animator.IsInMultiPartEmote() || m_animPlaying,
-		m_input.IsLeftButtonHeld()
+		m_input.IsLmbHeldForMovement()
 	);
 }
 

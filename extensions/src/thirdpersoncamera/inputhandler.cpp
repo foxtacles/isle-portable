@@ -9,7 +9,7 @@ using namespace Extensions::ThirdPersonCamera;
 
 InputHandler::InputHandler()
 	: m_touch{}, m_wantsAutoDisable(false), m_wantsAutoEnable(false), m_rightButtonHeld(false),
-	  m_leftButtonHeld(false), m_savedMouseX(0.0f), m_savedMouseY(0.0f)
+	  m_leftButtonHeld(false), m_leftButtonDownTime(0), m_savedMouseX(0.0f), m_savedMouseY(0.0f)
 {
 }
 
@@ -75,6 +75,12 @@ bool InputHandler::ConsumeAutoEnable()
 	return std::exchange(m_wantsAutoEnable, false);
 }
 
+bool InputHandler::IsLmbHeldForMovement() const
+{
+	return m_leftButtonHeld && m_leftButtonDownTime > 0 &&
+		   (SDL_GetTicks() - m_leftButtonDownTime) >= LMB_HOLD_THRESHOLD_MS;
+}
+
 void InputHandler::SuppressGestures()
 {
 	m_touch.synced[0] = false;
@@ -132,6 +138,7 @@ void InputHandler::HandleSDLEvent(SDL_Event* p_event, OrbitCamera& p_orbit, bool
 		}
 		else if (p_event->button.button == SDL_BUTTON_LEFT) {
 			m_leftButtonHeld = p_event->button.down;
+			m_leftButtonDownTime = p_event->button.down ? SDL_GetTicks() : 0;
 		}
 		break;
 	}
