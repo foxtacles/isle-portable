@@ -193,7 +193,6 @@ private:
 	std::atomic<int32_t> m_pendingAnimInterest;
 	std::atomic<bool> m_pendingAnimCancel;
 
-	bool m_disableAllNPCs;
 	bool m_showNameBubbles;
 	bool m_lastCameraEnabled;
 	bool m_wasInRestrictedArea;

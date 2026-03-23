@@ -68,10 +68,10 @@ NetworkManager::NetworkManager()
 	  m_inIsleWorld(false), m_registered(false), m_pendingToggleThirdPerson(false), m_pendingToggleNameBubbles(false),
 	  m_pendingWalkAnim(-1), m_pendingIdleAnim(-1), m_pendingEmote(-1), m_pendingToggleAllowCustomize(false),
 	  m_pendingAnimInterest(-1), m_pendingAnimCancel(false), m_localPendingAnimInterest(-1),
-	  m_playingAnimIndex(Animation::ANIM_INDEX_NONE), m_disableAllNPCs(false), m_showNameBubbles(true),
-	  m_lastCameraEnabled(false), m_wasInRestrictedArea(false), m_animStateDirty(false), m_animInterestDirty(false),
-	  m_lastAnimPushTime(0), m_connectionState(STATE_DISCONNECTED), m_wasRejected(false), m_reconnectAttempt(0),
-	  m_reconnectDelay(0), m_nextReconnectTime(0)
+	  m_playingAnimIndex(Animation::ANIM_INDEX_NONE), m_showNameBubbles(true), m_lastCameraEnabled(false),
+	  m_wasInRestrictedArea(false), m_animStateDirty(false), m_animInterestDirty(false), m_lastAnimPushTime(0),
+	  m_connectionState(STATE_DISCONNECTED), m_wasRejected(false), m_reconnectAttempt(0), m_reconnectDelay(0),
+	  m_nextReconnectTime(0)
 {
 }
 
@@ -90,9 +90,7 @@ MxResult NetworkManager::Tickle()
 	ProcessPendingRequests();
 	CheckConnectionState();
 
-	if (m_disableAllNPCs) {
-		EnforceDisableNPCs();
-	}
+	EnforceDisableNPCs();
 
 	// Detect camera state changes for platform notification
 	ThirdPersonCamera::Controller* cam = GetCamera();
@@ -354,10 +352,7 @@ void NetworkManager::OnWorldEnabled(LegoWorld* p_world)
 		}
 
 		NotifyPlayerCountChanged();
-
-		if (m_disableAllNPCs) {
-			EnforceDisableNPCs();
-		}
+		EnforceDisableNPCs();
 
 		// Refresh animation catalog from the animation manager
 		if (AnimationManager()) {
@@ -752,21 +747,13 @@ void NetworkManager::ProcessIncomingPackets()
 				m_localPeerId = assignedId;
 				m_worldSync.SetLocalPeerId(assignedId);
 				m_animCoordinator.SetLocalPeerId(assignedId);
-			}
-			if (length >= 6) {
-				uint8_t maxActors = data[5];
-				if (maxActors <= 40) {
-					LegoAnimationManager::configureLegoAnimationManager(maxActors);
-					if (AnimationManager()) {
-						AnimationManager()->m_maxAllowedExtras = maxActors;
-						AnimationManager()->m_numAllowedExtras =
-							SDL_min(AnimationManager()->m_numAllowedExtras, (MxU32) maxActors);
-					}
-					m_disableAllNPCs = (maxActors == 0);
-					if (m_disableAllNPCs) {
-						EnforceDisableNPCs();
-					}
+
+				LegoAnimationManager::configureLegoAnimationManager(0);
+				if (AnimationManager()) {
+					AnimationManager()->m_maxAllowedExtras = 0;
+					AnimationManager()->m_numAllowedExtras = 0;
 				}
+				EnforceDisableNPCs();
 			}
 			break;
 		}
@@ -1625,8 +1612,8 @@ void NetworkManager::BroadcastAnimComplete(uint16_t p_animIndex)
 			else {
 				auto it = m_remotePlayers.find(slot.peerId);
 				p.charIndex = it != m_remotePlayers.end()
-					? Animation::Catalog::DisplayActorToCharacterIndex(it->second->GetDisplayActorIndex())
-					: -1;
+								  ? Animation::Catalog::DisplayActorToCharacterIndex(it->second->GetDisplayActorIndex())
+								  : -1;
 			}
 		}
 		else {
@@ -1672,9 +1659,13 @@ void NetworkManager::HandleAnimComplete(const AnimCompleteMsg& p_msg)
 
 	// Build JSON for frontend
 	char eventIdHex[17];
-	SDL_snprintf(eventIdHex, sizeof(eventIdHex), "%08x%08x",
+	SDL_snprintf(
+		eventIdHex,
+		sizeof(eventIdHex),
+		"%08x%08x",
 		static_cast<uint32_t>(p_msg.eventId >> 32),
-		static_cast<uint32_t>(p_msg.eventId & 0xFFFFFFFF));
+		static_cast<uint32_t>(p_msg.eventId & 0xFFFFFFFF)
+	);
 
 	std::string json = "{\"eventId\":\"";
 	json += eventIdHex;
