@@ -56,6 +56,7 @@ option(ISLE_WERROR "Treat warnings as errors" OFF)
 cmake_dependent_option(ISLE_USE_DX5 "Build with internal DirectX 5 SDK" "${NOT_MINGW}" "WIN32;CMAKE_SIZEOF_VOID_P EQUAL 4" OFF)
 cmake_dependent_option(ISLE_MINIWIN "Use miniwin" ON "NOT ISLE_USE_DX5" OFF)
 cmake_dependent_option(ISLE_EXTENSIONS "Use extensions" ON "NOT ISLE_USE_DX5;NOT WINDOWS_STORE" OFF)
+cmake_dependent_option(ISLE_USE_LWS "Use libwebsockets for native multiplayer" ON "ISLE_EXTENSIONS;NOT EMSCRIPTEN;NOT NINTENDO_3DS;NOT NINTENDO_SWITCH;NOT VITA" OFF)
 cmake_dependent_option(ISLE_BUILD_CONFIG "Build CONFIG.EXE application" ON "MSVC OR ISLE_MINIWIN;NOT NINTENDO_3DS;NOT NINTENDO_SWITCH;NOT WINDOWS_STORE;NOT VITA" OFF)
 cmake_dependent_option(ISLE_COMPILE_SHADERS "Compile shaders" ON "SDL_SHADERCROSS_BIN;TARGET Python3::Interpreter" OFF)
 cmake_dependent_option(CMAKE_POSITION_INDEPENDENT_CODE "Build with -fPIC" ON "NOT VITA" OFF)
@@ -531,7 +532,59 @@ if (ISLE_EXTENSIONS)
     extensions/src/extensions.cpp
     extensions/src/siloader.cpp
     extensions/src/textureloader.cpp
+
+    # Common shared code
+    extensions/src/common/charactertables.cpp
+    extensions/src/common/animutils.cpp
+    extensions/src/common/characteranimator.cpp
+    extensions/src/common/charactercloner.cpp
+    extensions/src/common/charactercustomizer.cpp
+    extensions/src/common/customizestate.cpp
+    extensions/src/common/pathutils.cpp
+
+    # Third person camera extension
+    extensions/src/thirdpersoncamera.cpp
+    extensions/src/thirdpersoncamera/controller.cpp
+    extensions/src/thirdpersoncamera/orbitcamera.cpp
+    extensions/src/thirdpersoncamera/inputhandler.cpp
+    extensions/src/thirdpersoncamera/displayactor.cpp
+
+    # Multiplayer extension
+    extensions/src/multiplayer/animation/catalog.cpp
+    extensions/src/multiplayer/animation/coordinator.cpp
+    extensions/src/multiplayer/animation/loader.cpp
+    extensions/src/multiplayer/animation/locationproximity.cpp
+    extensions/src/multiplayer/animation/sceneplayer.cpp
+    extensions/src/multiplayer/animation/sessionhost.cpp
+    extensions/src/multiplayer/animation/audioplayer.cpp
+    extensions/src/multiplayer/animation/phonemeplayer.cpp
+    extensions/src/multiplayer.cpp
+    extensions/src/multiplayer/namebubblerenderer.cpp
+    extensions/src/multiplayer/networkmanager.cpp
+    extensions/src/multiplayer/protocol.cpp
+    extensions/src/multiplayer/remoteplayer.cpp
+    extensions/src/multiplayer/sireader.cpp
+    extensions/src/multiplayer/worldstatesync.cpp
   )
+  if(EMSCRIPTEN)
+    target_sources(lego1 PRIVATE
+      extensions/src/multiplayer/platforms/emscripten/websockettransport.cpp
+      extensions/src/multiplayer/platforms/emscripten/callbacks.cpp
+    )
+  elseif(ISLE_USE_LWS)
+    target_sources(lego1 PRIVATE
+      extensions/src/multiplayer/platforms/native/lwstransport.cpp
+      extensions/src/multiplayer/platforms/native/nativecallbacks.cpp
+    )
+    # Skip precompiled headers for native transport files to avoid miniwin/windows.h conflicts
+    set_source_files_properties(
+      extensions/src/multiplayer/platforms/native/lwstransport.cpp
+      extensions/src/multiplayer/platforms/native/nativecallbacks.cpp
+      PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
+    target_compile_definitions(lego1 PRIVATE ISLE_USE_LWS)
+    target_link_libraries(lego1 PRIVATE websockets)
+  endif()
 endif()
 
 if (ISLE_BUILD_APP)
@@ -587,6 +640,11 @@ if (ISLE_BUILD_APP)
       ISLE/emscripten/messagebox.cpp
       ISLE/emscripten/window.cpp
     )
+    if(ISLE_EXTENSIONS)
+      target_sources(isle PRIVATE
+        extensions/src/multiplayer/platforms/emscripten/wasm_exports.cpp
+      )
+    endif()
     target_compile_definitions(isle PRIVATE "ISLE_EMSCRIPTEN_HOST=\"${ISLE_EMSCRIPTEN_HOST}\"")
     set_property(TARGET isle PROPERTY SUFFIX ".html")
   endif()

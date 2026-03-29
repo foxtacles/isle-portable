@@ -5,6 +5,7 @@
 #include "bike.h"
 #include "carrace.h"
 #include "dunebuggy.h"
+#include "extensions/multiplayer.h"
 #include "extensions/siloader.h"
 #include "helicopter.h"
 #include "isle_actions.h"
@@ -216,7 +217,7 @@ MxLong Isle::HandleEndAction(MxEndActionNotificationParam& p_param)
 					result = 1;
 				}
 			}
-			else if (auto replacedObject = Extension<SiLoader>::Call(ReplacedIn, *p_param.GetAction(), *g_jukeboxScript).value_or(std::nullopt)) {
+			else if (auto replacedObject = Extension<SiLoaderExt>::Call(SI::ReplacedIn, *p_param.GetAction(), *g_jukeboxScript).value_or(std::nullopt)) {
 				MxS32 script = replacedObject->second;
 
 				if (script >= JukeboxScript::c_JBMusic1 && script <= JukeboxScript::c_JBMusic6) {
@@ -296,6 +297,11 @@ void Isle::ReadyWorld()
 MxLong Isle::HandleControl(LegoControlManagerNotificationParam& p_param)
 {
 	if (p_param.m_enabledChild == 1) {
+		if (Extension<MultiplayerExt>::Call(MP::HandleSkyLightControl, (MxU32) p_param.m_clickedObjectId)
+				.value_or(FALSE)) {
+			return 1;
+		}
+
 		MxDSAction action;
 
 		switch (p_param.m_clickedObjectId) {
