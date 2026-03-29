@@ -37,6 +37,7 @@
 #include "viewmanager/viewmanager.h"
 
 #include <array>
+#include <extensions/multiplayer.h>
 #include <extensions/thirdpersoncamera.h>
 #include <miniwin/miniwindevice.h>
 #include <type_traits>
@@ -1297,6 +1298,14 @@ inline bool IsleApp::Tick()
 	if (!Lego()) {
 		return true;
 	}
+
+#ifdef EXTENSIONS
+	if (Extensions::IsMultiplayerRejected()) {
+		g_closed = TRUE;
+		return true;
+	}
+#endif
+
 	if (!TickleManager()) {
 		return true;
 	}
