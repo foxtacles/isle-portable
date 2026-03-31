@@ -316,10 +316,12 @@ void ScenePlayer::Play(
 	m_phonemePlayer.Init(data->phonemeTracks, m_roiMap, m_roiMapSize, m_actorAliases);
 	m_audioPlayer.Init(data->audioTracks);
 
-	// Observers don't get camera control — they watch the animation from their own viewpoint
-	m_hasCamAnim = (!m_observerMode && m_category == e_camAnim && m_currentData->anim->GetCamAnim() != nullptr);
+	// Observers and spectators don't get camera control — they watch the animation from their own viewpoint
+	m_hasCamAnim =
+		(!m_observerMode && !m_participants[0].IsSpectator() && m_category == e_camAnim &&
+		 m_currentData->anim->GetCamAnim() != nullptr);
 
-	if (m_category == e_camAnim && !m_observerMode) {
+	if (m_category == e_camAnim && !m_observerMode && !m_participants[0].IsSpectator()) {
 		// Hide the player's ride vehicle — it would remain visible at the
 		// pre-animation position while the player is teleported
 		LegoROI* localVehicle = m_participants[0].vehicleROI;

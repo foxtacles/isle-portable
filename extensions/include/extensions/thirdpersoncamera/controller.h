@@ -62,7 +62,7 @@ public:
 
 	// Signal that an external animation is active.
 	// p_lockDisplay: true if the display ROI is being driven by the animation (performer),
-	//                false if just spectating (idle anim continues).
+	//                false if just spectating (free to move).
 	// p_onStop is called before the display ROI is destroyed (Deactivate/OnWorldDisabled).
 	void SetAnimPlaying(
 		bool p_animPlaying,
