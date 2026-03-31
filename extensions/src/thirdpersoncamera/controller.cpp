@@ -143,7 +143,8 @@ void Controller::OnActorEnter(IslePathActor* p_actor)
 		}
 
 		m_active = true;
-		m_orbit.SetupCamera(userActor);
+		m_orbit.ResetSmoothedSpeed();
+		m_orbit.ApplyOrbitCamera();
 		m_animator.BuildRideAnimation(m_animator.GetCurrentVehicleType(), m_playerROI);
 		return;
 	}
@@ -180,7 +181,7 @@ void Controller::OnActorExit(IslePathActor* p_actor)
 	if (m_animator.GetCurrentVehicleType() != VEHICLE_NONE) {
 		m_animator.ClearRideAnimation();
 		m_animator.ClearAll();
-		ReinitForCharacter();
+		ReinitForCharacter(/*p_preserveCamera=*/true);
 	}
 	else if (m_active && static_cast<LegoPathActor*>(p_actor) == UserActor()) {
 		if (m_playerROI) {
@@ -451,7 +452,7 @@ MxBool Controller::HandleFirstPersonForward(
 	return TRUE;
 }
 
-void Controller::ReinitForCharacter()
+void Controller::ReinitForCharacter(bool p_preserveCamera)
 {
 	if (!GameState() || IsRestrictedArea(GameState()->m_currentArea)) {
 		m_active = false;
@@ -519,6 +520,12 @@ void Controller::ReinitForCharacter()
 	m_animator.ApplyIdleFrame0(m_playerROI);
 
 	if (!m_pendingWorldTransition) {
-		m_orbit.SetupCamera(userActor);
+		if (p_preserveCamera) {
+			m_orbit.ResetSmoothedSpeed();
+			m_orbit.ApplyOrbitCamera();
+		}
+		else {
+			m_orbit.SetupCamera(userActor);
+		}
 	}
 }
