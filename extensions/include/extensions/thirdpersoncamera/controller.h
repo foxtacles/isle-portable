@@ -129,7 +129,7 @@ public:
 private:
 	void CancelExternalAnim();
 	void Deactivate();
-	void ReinitForCharacter();
+	void ReinitForCharacter(bool p_preserveCamera = false);
 
 	OrbitCamera m_orbit;
 	InputHandler m_input;
