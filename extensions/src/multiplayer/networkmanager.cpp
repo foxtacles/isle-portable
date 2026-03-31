@@ -9,6 +9,7 @@
 #include "extensions/multiplayer/namebubblerenderer.h"
 #include "extensions/thirdpersoncamera.h"
 #include "extensions/thirdpersoncamera/controller.h"
+#include "isle.h"
 #include "legoactor.h"
 #include "legoanimationmanager.h"
 #include "legocachsound.h"
@@ -488,6 +489,13 @@ void NetworkManager::EnforceDisableNPCs()
 		if (state != NULL) {
 			state->m_playedExitScript = TRUE;
 		}
+	}
+
+	// Suppress first-time vehicle entry camera animations (triggered via
+	// ActivateSceneActions, which also bypasses the m_enableCamAnims check)
+	Act1State* act1state = (Act1State*) GameState()->GetState("Act1State");
+	if (act1state != NULL) {
+		act1state->m_playedExitExplanation = TRUE;
 	}
 
 	// Purge all extras including ambient NPCs (mama, papa, brickster)
