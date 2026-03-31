@@ -375,9 +375,9 @@ void Loader::CleanupPreloadThread()
 	}
 }
 
-void Loader::PreloadAsync(int8_t p_worldId, uint32_t p_objectId)
+void Loader::PreloadAsync(int8_t p_preloadWorldId, uint32_t p_preloadObjectId)
 {
-	uint64_t key = CacheKey(p_worldId, p_objectId);
+	uint64_t key = CacheKey(p_preloadWorldId, p_preloadObjectId);
 
 	{
 		AUTOLOCK(m_cacheCS);
@@ -386,16 +386,16 @@ void Loader::PreloadAsync(int8_t p_worldId, uint32_t p_objectId)
 		}
 	}
 
-	if (m_preloadThread && m_preloadWorldId == p_worldId && m_preloadObjectId == p_objectId && !m_preloadDone) {
+	if (m_preloadThread && m_preloadWorldId == p_preloadWorldId && m_preloadObjectId == p_preloadObjectId && !m_preloadDone) {
 		return;
 	}
 
 	CleanupPreloadThread();
 
-	m_preloadWorldId = p_worldId;
-	m_preloadObjectId = p_objectId;
+	m_preloadWorldId = p_preloadWorldId;
+	m_preloadObjectId = p_preloadObjectId;
 	m_preloadDone = false;
-	m_preloadThread = new PreloadThread(this, p_worldId, p_objectId);
+	m_preloadThread = new PreloadThread(this, p_preloadWorldId, p_preloadObjectId);
 	m_preloadThread->Start(0x1000, 0);
 }
 

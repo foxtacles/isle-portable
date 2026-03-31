@@ -18,18 +18,18 @@ void Coordinator::SetCatalog(const Catalog* p_catalog)
 	m_catalog = p_catalog;
 }
 
-void Coordinator::SetLocalPeerId(uint32_t p_peerId)
+void Coordinator::SetLocalPeerId(uint32_t p_localPeerId)
 {
-	m_localPeerId = p_peerId;
+	m_localPeerId = p_localPeerId;
 }
 
-void Coordinator::SetInterest(uint16_t p_animIndex)
+void Coordinator::SetInterest(uint16_t p_currentAnimIndex)
 {
 	if (m_state != CoordinationState::e_idle && m_state != CoordinationState::e_interested) {
 		return;
 	}
 
-	m_currentAnimIndex = p_animIndex;
+	m_currentAnimIndex = p_currentAnimIndex;
 	m_state = CoordinationState::e_interested;
 	m_cancelPending = false;
 }
@@ -206,7 +206,7 @@ void Coordinator::RemoveSession(uint16_t p_animIndex)
 }
 
 void Coordinator::ApplySessionUpdate(
-	uint16_t p_animIndex,
+	uint16_t p_currentAnimIndex,
 	uint8_t p_state,
 	uint16_t p_countdownMs,
 	const uint32_t p_slots[8],
@@ -215,10 +215,10 @@ void Coordinator::ApplySessionUpdate(
 {
 	if (p_state == 0) {
 		// Session cleared
-		m_sessions.erase(p_animIndex);
+		m_sessions.erase(p_currentAnimIndex);
 
 		// If local player was in this session, reset to idle
-		if (m_currentAnimIndex == p_animIndex &&
+		if (m_currentAnimIndex == p_currentAnimIndex &&
 			(m_state == CoordinationState::e_interested || m_state == CoordinationState::e_countdown ||
 			 m_state == CoordinationState::e_playing)) {
 			m_state = CoordinationState::e_idle;
@@ -227,7 +227,7 @@ void Coordinator::ApplySessionUpdate(
 		return;
 	}
 
-	SessionView& sv = m_sessions[p_animIndex];
+	SessionView& sv = m_sessions[p_currentAnimIndex];
 	sv.state = static_cast<CoordinationState>(p_state);
 	sv.countdownMs = p_countdownMs;
 	sv.countdownEndTime = (p_countdownMs > 0) ? (SDL_GetTicks() + p_countdownMs) : 0;
@@ -247,11 +247,11 @@ void Coordinator::ApplySessionUpdate(
 		}
 
 		if (localInSession && !m_cancelPending) {
-			m_currentAnimIndex = p_animIndex;
+			m_currentAnimIndex = p_currentAnimIndex;
 			m_state = sv.state;
 		}
 		else if (!localInSession) {
-			if (m_currentAnimIndex == p_animIndex) {
+			if (m_currentAnimIndex == p_currentAnimIndex) {
 				m_state = CoordinationState::e_idle;
 				m_currentAnimIndex = ANIM_INDEX_NONE;
 			}
@@ -260,15 +260,15 @@ void Coordinator::ApplySessionUpdate(
 	}
 }
 
-void Coordinator::ApplyAnimStart(uint16_t p_animIndex)
+void Coordinator::ApplyAnimStart(uint16_t p_currentAnimIndex)
 {
-	if (IsLocalPlayerInSession(p_animIndex)) {
+	if (IsLocalPlayerInSession(p_currentAnimIndex)) {
 		m_state = CoordinationState::e_playing;
-		m_currentAnimIndex = p_animIndex;
+		m_currentAnimIndex = p_currentAnimIndex;
 	}
 
 	// Update session view so PushAnimationState reads correct values
-	auto it = m_sessions.find(p_animIndex);
+	auto it = m_sessions.find(p_currentAnimIndex);
 	if (it != m_sessions.end()) {
 		it->second.state = CoordinationState::e_playing;
 		it->second.countdownMs = 0;

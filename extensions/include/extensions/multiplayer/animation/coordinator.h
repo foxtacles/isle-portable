@@ -50,8 +50,8 @@ public:
 	CoordinationState GetState() const { return m_state; }
 	uint16_t GetCurrentAnimIndex() const { return m_currentAnimIndex; }
 
-	void SetLocalPeerId(uint32_t p_peerId);
-	void SetInterest(uint16_t p_animIndex);
+	void SetLocalPeerId(uint32_t p_localPeerId);
+	void SetInterest(uint16_t p_currentAnimIndex);
 	void ClearInterest();
 
 	// Compute eligibility for animations at a location.
@@ -77,7 +77,7 @@ public:
 
 	// Apply authoritative session state from host
 	void ApplySessionUpdate(
-		uint16_t p_animIndex,
+		uint16_t p_currentAnimIndex,
 		uint8_t p_state,
 		uint16_t p_countdownMs,
 		const uint32_t p_slots[8],
@@ -85,7 +85,7 @@ public:
 	);
 
 	// Apply animation start from host
-	void ApplyAnimStart(uint16_t p_animIndex);
+	void ApplyAnimStart(uint16_t p_currentAnimIndex);
 
 	// Get session view for an animation (nullptr if no session)
 	const SessionView* GetSessionView(uint16_t p_animIndex) const;

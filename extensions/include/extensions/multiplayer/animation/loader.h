@@ -71,7 +71,7 @@ public:
 	void SetSIReader(SIReader* p_reader) { m_reader = p_reader; }
 
 	SceneAnimData* EnsureCached(int8_t p_worldId, uint32_t p_objectId);
-	void PreloadAsync(int8_t p_worldId, uint32_t p_objectId);
+	void PreloadAsync(int8_t p_preloadWorldId, uint32_t p_preloadObjectId);
 
 	// Get the SI file path for a world. Returns nullptr if unsupported.
 	static const char* GetSIPath(int8_t p_worldId);
