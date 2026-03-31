@@ -91,7 +91,7 @@ public:
 	bool IsInIsleWorld() const { return m_inIsleWorld; }
 	bool GetShowNameBubbles() const { return m_showNameBubbles; }
 
-	RemotePlayer* FindPlayerByROI(LegoROI* roi) const;
+	RemotePlayer* FindPlayerByROI(LegoROI* p_roi) const;
 	bool IsClonedCharacter(const char* p_name) const;
 	void SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType, uint8_t p_partIndex);
 

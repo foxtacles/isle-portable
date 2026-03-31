@@ -1322,9 +1322,9 @@ void NetworkManager::NotifyAllowCustomizeChanged(bool p_enabled)
 	m_callbacks->OnAllowCustomizeChanged(p_enabled);
 }
 
-RemotePlayer* NetworkManager::FindPlayerByROI(LegoROI* roi) const
+RemotePlayer* NetworkManager::FindPlayerByROI(LegoROI* p_roi) const
 {
-	auto it = m_roiToPlayer.find(roi);
+	auto it = m_roiToPlayer.find(p_roi);
 	if (it != m_roiToPlayer.end()) {
 		return it->second;
 	}

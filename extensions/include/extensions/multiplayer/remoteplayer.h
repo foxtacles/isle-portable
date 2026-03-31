@@ -61,10 +61,10 @@ public:
 
 	const char* GetDisplayName() const { return m_displayName; }
 
-	void LockForAnimation(uint16_t p_animIndex) { m_lockedForAnimIndex = p_animIndex; }
-	void UnlockFromAnimation(uint16_t p_animIndex)
+	void LockForAnimation(uint16_t p_lockedForAnimIndex) { m_lockedForAnimIndex = p_lockedForAnimIndex; }
+	void UnlockFromAnimation(uint16_t p_lockedForAnimIndex)
 	{
-		if (m_lockedForAnimIndex == p_animIndex) {
+		if (m_lockedForAnimIndex == p_lockedForAnimIndex) {
 			m_lockedForAnimIndex = Animation::ANIM_INDEX_NONE;
 		}
 	}
