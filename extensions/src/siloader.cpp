@@ -58,11 +58,11 @@ bool SiLoaderExt::Load()
 	return true;
 }
 
-std::optional<MxCore*> SiLoaderExt::HandleFind(StreamObject p_object, LegoWorld* world)
+std::optional<MxCore*> SiLoaderExt::HandleFind(StreamObject p_object, LegoWorld* p_world)
 {
 	for (const auto& key : replace) {
 		if (key.first == p_object) {
-			return world->Find(key.second.first, key.second.second);
+			return p_world->Find(key.second.first, key.second.second);
 		}
 	}
 
@@ -155,17 +155,17 @@ MxBool SiLoaderExt::HandleWorld(LegoWorld* p_world)
 	return TRUE;
 }
 
-std::optional<MxBool> SiLoaderExt::HandleRemove(StreamObject p_object, LegoWorld* world)
+std::optional<MxBool> SiLoaderExt::HandleRemove(StreamObject p_object, LegoWorld* p_world)
 {
 	for (const auto& key : removeWith) {
 		if (key.first == p_object) {
-			RemoveFromWorld(key.second.first, key.second.second, world->GetAtomId(), world->GetEntityId());
+			RemoveFromWorld(key.second.first, key.second.second, p_world->GetAtomId(), p_world->GetEntityId());
 		}
 	}
 
 	for (const auto& key : replace) {
 		if (key.first == p_object) {
-			return RemoveFromWorld(key.second.first, key.second.second, world->GetAtomId(), world->GetEntityId());
+			return RemoveFromWorld(key.second.first, key.second.second, p_world->GetAtomId(), p_world->GetEntityId());
 		}
 	}
 
