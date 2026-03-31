@@ -143,7 +143,8 @@ void Controller::OnActorEnter(IslePathActor* p_actor)
 		}
 
 		m_active = true;
-		m_orbit.SetupCamera(userActor);
+		m_orbit.ResetSmoothedSpeed();
+		m_orbit.ApplyOrbitCamera();
 		m_animator.BuildRideAnimation(m_animator.GetCurrentVehicleType(), m_playerROI);
 		return;
 	}
