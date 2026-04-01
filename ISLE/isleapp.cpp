@@ -873,6 +873,14 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
 		case e_badEnding:
 			rumble(1.0f, 1.0f, 1.0f, 3000);
 			break;
+#ifdef __EMSCRIPTEN__
+		case e_saveSlotWritten:
+			Emscripten_SendSaveSlotWritten((MxS32) (intptr_t) event->user.data1);
+			break;
+		case e_saveStateChanged:
+			Emscripten_SendSaveStateChanged();
+			break;
+#endif
 		}
 	}
 

@@ -336,6 +336,8 @@ MxResult LegoGameState::Save(MxULong p_slot)
 	SerializeScoreHistory(LegoFile::c_write);
 	m_isDirty = FALSE;
 
+	EmitGameEvent(e_saveSlotWritten, (void*) (intptr_t) p_slot);
+
 done:
 	return result;
 }
