@@ -89,7 +89,6 @@ public:
 	void RequestCancelAnimInterest() { m_pendingAnimCancel.store(true, std::memory_order_relaxed); }
 
 	bool IsInIsleWorld() const { return m_inIsleWorld; }
-	bool GetShowNameBubbles() const { return m_showNameBubbles; }
 
 	RemotePlayer* FindPlayerByROI(LegoROI* p_roi) const;
 	bool IsClonedCharacter(const char* p_name) const;
@@ -156,6 +155,7 @@ private:
 	void BroadcastChangedSessions(const std::vector<uint16_t>& p_changedAnims);
 	void TickHostSessions();
 
+	MessageHeader MakeHeader(uint8_t p_type, uint32_t p_target);
 	void ProcessPendingRequests();
 	void RemoveRemotePlayer(uint32_t p_peerId);
 	void RemoveAllRemotePlayers();

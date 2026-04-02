@@ -227,11 +227,7 @@ void RemotePlayer::Tick(float p_deltaTime)
 	UpdateVehicleState();
 	UpdateTransform(p_deltaTime);
 
-	bool isMoving = m_targetSpeed > REMOTE_SPEED_THRESHOLD;
-	if (m_animator.GetFrozenExtraAnimId() >= 0) {
-		isMoving = false;
-	}
-	m_animator.Tick(p_deltaTime, m_roi, isMoving);
+	m_animator.Tick(p_deltaTime, m_roi, IsEffectivelyMoving());
 
 	// Update name bubble position and billboard orientation
 	if (m_nameBubble) {
@@ -291,11 +287,12 @@ void RemotePlayer::TriggerExtraAnim(uint8_t p_emoteId)
 		return;
 	}
 
-	bool isMoving = m_targetSpeed > REMOTE_SPEED_THRESHOLD;
-	if (m_animator.GetFrozenExtraAnimId() >= 0) {
-		isMoving = false;
-	}
-	m_animator.TriggerExtraAnim(p_emoteId, m_roi, isMoving);
+	m_animator.TriggerExtraAnim(p_emoteId, m_roi, IsEffectivelyMoving());
+}
+
+bool RemotePlayer::IsEffectivelyMoving() const
+{
+	return m_targetSpeed > REMOTE_SPEED_THRESHOLD && m_animator.GetFrozenExtraAnimId() < 0;
 }
 
 void RemotePlayer::UpdateTransform(float p_deltaTime)

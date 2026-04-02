@@ -330,7 +330,7 @@ void WorldStateSync::ApplyWorldEvent(uint8_t p_entityType, uint8_t p_changeType,
 
 		LegoPlantInfo* info = &plantInfo[p_entityIndex];
 
-		if (info->m_entity != NULL) {
+		if (info->m_entity != nullptr) {
 			if (!DispatchEntitySwitch(info->m_entity, p_changeType)) {
 				if (p_changeType == CHANGE_COLOR) {
 					info->m_entity->SwitchColor(info->m_entity->GetROI());
@@ -402,7 +402,7 @@ void WorldStateSync::ApplyWorldEvent(uint8_t p_entityType, uint8_t p_changeType,
 
 		LegoBuildingInfo* info = &buildingInfo[p_entityIndex];
 
-		if (info->m_entity != NULL) {
+		if (info->m_entity != nullptr) {
 			if (!DispatchEntitySwitch(info->m_entity, p_changeType)) {
 				if (p_changeType == CHANGE_COLOR) {
 					info->m_entity->SwitchColor(info->m_entity->GetROI());

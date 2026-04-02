@@ -46,7 +46,6 @@ public:
 
 	float GetOrbitDistance() const { return m_orbitDistance; }
 	void SetOrbitDistance(float p_orbitDistance) { m_orbitDistance = p_orbitDistance; }
-	float GetSmoothedSpeed() const { return m_smoothedSpeed; }
 	void ResetSmoothedSpeed() { m_smoothedSpeed = 0.0f; }
 
 	static constexpr float DEFAULT_ORBIT_YAW = 0.0f;

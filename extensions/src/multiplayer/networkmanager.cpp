@@ -185,7 +185,7 @@ MxResult NetworkManager::Tickle()
 					}
 					else if (IsConnected()) {
 						AnimCancelMsg cancelMsg{};
-						cancelMsg.header = {MSG_ANIM_CANCEL, 0, m_localPeerId, m_sequence++, TARGET_HOST};
+						cancelMsg.header = MakeHeader(MSG_ANIM_CANCEL, TARGET_HOST);
 						SendMessage(cancelMsg);
 					}
 					m_localPendingAnimInterest = -1;
@@ -338,7 +338,7 @@ void NetworkManager::CancelLocalAnimInterest()
 	}
 	else if (IsConnected()) {
 		AnimCancelMsg msg{};
-		msg.header = {MSG_ANIM_CANCEL, 0, m_localPeerId, m_sequence++, TARGET_HOST};
+		msg.header = MakeHeader(MSG_ANIM_CANCEL, TARGET_HOST);
 		SendMessage(msg);
 	}
 
@@ -486,7 +486,7 @@ void NetworkManager::EnforceDisableNPCs()
 
 	for (const char* name : buildStateNames) {
 		LegoVehicleBuildState* state = (LegoVehicleBuildState*) GameState()->GetState(name);
-		if (state != NULL) {
+		if (state != nullptr) {
 			state->m_playedExitScript = TRUE;
 		}
 	}
@@ -494,7 +494,7 @@ void NetworkManager::EnforceDisableNPCs()
 	// Suppress first-time vehicle entry camera animations (triggered via
 	// ActivateSceneActions, which also bypasses the m_enableCamAnims check)
 	Act1State* act1state = (Act1State*) GameState()->GetState("Act1State");
-	if (act1state != NULL) {
+	if (act1state != nullptr) {
 		act1state->m_playedExitExplanation = TRUE;
 	}
 
@@ -502,15 +502,15 @@ void NetworkManager::EnforceDisableNPCs()
 	// that are spawned by camera path triggers via FUN_10064380.
 	// PurgeExtra(TRUE) deliberately skips mama/papa, so we purge manually.
 	for (MxS32 i = 0; i < (MxS32) sizeOfArray(am->m_extras); i++) {
-		if (am->m_extras[i].m_roi != NULL) {
+		if (am->m_extras[i].m_roi != nullptr) {
 			LegoPathActor* actor = CharacterManager()->GetExtraActor(am->m_extras[i].m_roi->GetName());
-			if (actor != NULL && actor->GetController() != NULL) {
+			if (actor != nullptr && actor->GetController() != nullptr) {
 				actor->GetController()->RemoveActor(actor);
-				actor->SetController(NULL);
+				actor->SetController(nullptr);
 			}
 
 			CharacterManager()->ReleaseActor(am->m_extras[i].m_roi);
-			am->m_extras[i].m_roi = NULL;
+			am->m_extras[i].m_roi = nullptr;
 			am->m_extras[i].m_characterId = -1;
 			am->m_unk0x414--;
 		}
@@ -600,6 +600,11 @@ void NetworkManager::ResetStateAfterReconnect()
 	ResetAnimationState();
 }
 
+MessageHeader NetworkManager::MakeHeader(uint8_t p_type, uint32_t p_target)
+{
+	return {p_type, 0, m_localPeerId, m_sequence++, p_target};
+}
+
 void NetworkManager::ProcessPendingRequests()
 {
 	ThirdPersonCamera::Controller* cam = GetCamera();
@@ -670,7 +675,7 @@ void NetworkManager::ProcessPendingRequests()
 			}
 			else if (IsConnected()) {
 				AnimInterestMsg msg{};
-				msg.header = {MSG_ANIM_INTEREST, 0, m_localPeerId, m_sequence++, TARGET_HOST};
+				msg.header = MakeHeader(MSG_ANIM_INTEREST, TARGET_HOST);
 				msg.animIndex = animIndex;
 				ThirdPersonCamera::Controller* animCam = GetCamera();
 				msg.displayActorIndex = animCam ? animCam->GetDisplayActorIndex() : 0;
@@ -747,7 +752,7 @@ void NetworkManager::BroadcastLocalState()
 	}
 
 	PlayerStateMsg msg{};
-	msg.header = {MSG_STATE, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = MakeHeader(MSG_STATE, TARGET_BROADCAST);
 	msg.actorId = actorId;
 	msg.worldId = inRestrictedArea ? WORLD_NOT_VISIBLE : (int8_t) currentWorld->GetWorldId();
 	msg.vehicleType = DetectVehicleType(userActor);
@@ -811,28 +816,28 @@ void NetworkManager::ProcessIncomingPackets()
 		}
 		case MSG_HOST_ASSIGN: {
 			HostAssignMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_HOST_ASSIGN) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleHostAssign(msg);
 			}
 			break;
 		}
 		case MSG_LEAVE: {
 			PlayerLeaveMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_LEAVE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleLeave(msg);
 			}
 			break;
 		}
 		case MSG_STATE: {
 			PlayerStateMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_STATE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleState(msg);
 			}
 			break;
 		}
 		case MSG_REQUEST_SNAPSHOT: {
 			RequestSnapshotMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_REQUEST_SNAPSHOT) {
+			if (DeserializeMsg(data, length, msg)) {
 				m_worldSync.HandleRequestSnapshot(msg);
 			}
 			break;
@@ -843,70 +848,70 @@ void NetworkManager::ProcessIncomingPackets()
 		}
 		case MSG_WORLD_EVENT: {
 			WorldEventMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_WORLD_EVENT) {
+			if (DeserializeMsg(data, length, msg)) {
 				m_worldSync.HandleWorldEvent(msg);
 			}
 			break;
 		}
 		case MSG_WORLD_EVENT_REQUEST: {
 			WorldEventRequestMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_WORLD_EVENT_REQUEST) {
+			if (DeserializeMsg(data, length, msg)) {
 				m_worldSync.HandleWorldEventRequest(msg);
 			}
 			break;
 		}
 		case MSG_EMOTE: {
 			EmoteMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_EMOTE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleEmote(msg);
 			}
 			break;
 		}
 		case MSG_HORN: {
 			HornMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_HORN) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleHorn(msg);
 			}
 			break;
 		}
 		case MSG_CUSTOMIZE: {
 			CustomizeMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_CUSTOMIZE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleCustomize(msg);
 			}
 			break;
 		}
 		case MSG_ANIM_INTEREST: {
 			AnimInterestMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_INTEREST) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleAnimInterest(msg.header.peerId, msg.animIndex, msg.displayActorIndex);
 			}
 			break;
 		}
 		case MSG_ANIM_CANCEL: {
 			AnimCancelMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_CANCEL) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleAnimCancel(msg.header.peerId);
 			}
 			break;
 		}
 		case MSG_ANIM_UPDATE: {
 			AnimUpdateMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_UPDATE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleAnimUpdate(msg);
 			}
 			break;
 		}
 		case MSG_ANIM_START: {
 			AnimStartMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_START) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleAnimStart(msg);
 			}
 			break;
 		}
 		case MSG_ANIM_COMPLETE: {
 			AnimCompleteMsg msg;
-			if (DeserializeMsg(data, length, msg) && msg.header.type == MSG_ANIM_COMPLETE) {
+			if (DeserializeMsg(data, length, msg)) {
 				HandleAnimComplete(msg);
 			}
 			break;
@@ -1105,7 +1110,7 @@ void NetworkManager::SendEmote(uint8_t p_emoteId)
 	cam->TriggerExtraAnim(p_emoteId);
 
 	EmoteMsg msg{};
-	msg.header = {MSG_EMOTE, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = MakeHeader(MSG_EMOTE, TARGET_BROADCAST);
 	msg.emoteId = p_emoteId;
 	SendMessage(msg);
 }
@@ -1126,7 +1131,7 @@ void NetworkManager::SendHorn(int8_t p_vehicleType)
 	}
 
 	HornMsg msg{};
-	msg.header = {MSG_HORN, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = MakeHeader(MSG_HORN, TARGET_BROADCAST);
 	msg.vehicleType = static_cast<uint8_t>(p_vehicleType);
 	SendMessage(msg);
 }
@@ -1346,7 +1351,7 @@ bool NetworkManager::IsClonedCharacter(const char* p_name) const
 void NetworkManager::SendCustomize(uint32_t p_targetPeerId, uint8_t p_changeType, uint8_t p_partIndex)
 {
 	CustomizeMsg msg{};
-	msg.header = {MSG_CUSTOMIZE, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST_ALL};
+	msg.header = MakeHeader(MSG_CUSTOMIZE, TARGET_BROADCAST_ALL);
 	msg.targetPeerId = p_targetPeerId;
 	msg.changeType = p_changeType;
 	msg.partIndex = p_partIndex;
@@ -1818,7 +1823,7 @@ void NetworkManager::HandleAnimStartLocally(uint16_t p_animIndex, bool p_localIn
 AnimUpdateMsg NetworkManager::BuildAnimUpdateMsg(uint16_t p_animIndex, uint32_t p_target)
 {
 	AnimUpdateMsg msg{};
-	msg.header = {MSG_ANIM_UPDATE, 0, m_localPeerId, m_sequence++, p_target};
+	msg.header = MakeHeader(MSG_ANIM_UPDATE, p_target);
 	msg.animIndex = p_animIndex;
 
 	const Animation::AnimSession* session = m_animSessionHost.FindSession(p_animIndex);
@@ -1853,7 +1858,7 @@ void NetworkManager::SendAnimUpdateToPlayer(uint16_t p_animIndex, uint32_t p_tar
 void NetworkManager::BroadcastAnimStart(uint16_t p_animIndex)
 {
 	AnimStartMsg msg{};
-	msg.header = {MSG_ANIM_START, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = MakeHeader(MSG_ANIM_START, TARGET_BROADCAST);
 	msg.animIndex = p_animIndex;
 	SendMessage(msg);
 
@@ -1874,7 +1879,7 @@ void NetworkManager::BroadcastAnimComplete(uint16_t p_animIndex)
 	}
 
 	AnimCompleteMsg msg{};
-	msg.header = {MSG_ANIM_COMPLETE, 0, m_localPeerId, m_sequence++, TARGET_BROADCAST};
+	msg.header = MakeHeader(MSG_ANIM_COMPLETE, TARGET_BROADCAST);
 	msg.eventId = (static_cast<uint64_t>(SDL_rand_bits()) << 32) | static_cast<uint64_t>(SDL_rand_bits());
 	msg.animIndex = p_animIndex;
 	msg.participantCount = 0;

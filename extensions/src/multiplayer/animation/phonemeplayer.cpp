@@ -78,7 +78,7 @@ void PhonemePlayer::Init(
 		if (existing) {
 			state.cachedTexture = existing->cachedTexture;
 			state.bitmap = new MxBitmap();
-			state.bitmap->SetSize(track.width, track.height, NULL, FALSE);
+			state.bitmap->SetSize(track.width, track.height, nullptr, FALSE);
 			m_states.push_back(state);
 			continue;
 		}
@@ -107,7 +107,7 @@ void PhonemePlayer::Init(
 		CharacterManager()->SetHeadTexture(targetROI, cached);
 
 		state.bitmap = new MxBitmap();
-		state.bitmap->SetSize(track.width, track.height, NULL, FALSE);
+		state.bitmap->SetSize(track.width, track.height, nullptr, FALSE);
 
 		m_states.push_back(state);
 	}

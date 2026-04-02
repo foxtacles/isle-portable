@@ -72,6 +72,7 @@ public:
 	bool IsAnimationLocked() const { return m_lockedForAnimIndex != Animation::ANIM_INDEX_NONE; }
 
 private:
+	bool IsEffectivelyMoving() const;
 	const char* GetDisplayActorName() const;
 	void UpdateTransform(float p_deltaTime);
 	void UpdateVehicleState();
