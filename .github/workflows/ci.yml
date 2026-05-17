@@ -243,6 +243,14 @@ jobs:
             --output appimage && \
           mv *.AppImage dist/
 
+      - name: Suffix debug AppImage
+        if: ${{ matrix.linux && matrix.debug }}
+        run: |
+          cd build/dist
+          for f in *.AppImage; do
+            mv "$f" "${f%.AppImage}-debug.AppImage"
+          done
+
       - name: Package (3DS)
         if: ${{ matrix.n3ds }}
         run: |
