@@ -5,6 +5,7 @@
 #include "bike.h"
 #include "carrace.h"
 #include "dunebuggy.h"
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "extensions/multiplayer.h"
 #include "extensions/siloader.h"
 #include "helicopter.h"
@@ -39,6 +40,9 @@
 #include "skateboard.h"
 #include "towtrack.h"
 #include "viewmanager/viewmanager.h"
+
+#include <cstdint>
+#include <cstdio>
 
 DECOMP_SIZE_ASSERT(Act1State, 0x26c)
 DECOMP_SIZE_ASSERT(LegoNamedPlane, 0x4c)
@@ -1139,39 +1143,51 @@ void Isle::Add(MxCore* p_object)
 
 	if (p_object->IsA("Pizza")) {
 		m_pizza = (Pizza*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_pizza");
 	}
 	else if (p_object->IsA("Pizzeria")) {
 		m_pizzeria = (Pizzeria*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_pizzeria");
 	}
 	else if (p_object->IsA("TowTrack")) {
 		m_towtrack = (TowTrack*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_towtrack");
 	}
 	else if (p_object->IsA("Ambulance")) {
 		m_ambulance = (Ambulance*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_ambulance");
 	}
 	else if (p_object->IsA("JukeBoxEntity")) {
 		m_jukebox = (JukeBoxEntity*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_jukebox");
 	}
 	else if (p_object->IsA("Helicopter")) {
 		m_helicopter = (Helicopter*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_helicopter");
 	}
 	else if (p_object->IsA("Bike")) {
 		m_bike = (Bike*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_bike");
 	}
 	else if (p_object->IsA("DuneBuggy")) {
 		m_dunebuggy = (DuneBuggy*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_dunebuggy");
 	}
 	else if (p_object->IsA("Motorcycle")) {
 		m_motocycle = (Motocycle*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_motocycle");
 	}
 	else if (p_object->IsA("SkateBoard")) {
 		m_skateboard = (SkateBoard*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_skateboard");
 	}
 	else if (p_object->IsA("Jetski")) {
 		m_jetski = (Jetski*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_jetski");
 	}
 	else if (p_object->IsA("RaceCar")) {
 		m_racecar = (RaceCar*) p_object;
+		roi_uaf_log_access(p_object, "Isle::Add:m_racecar");
 	}
 }
 
@@ -1642,6 +1658,35 @@ void Act1State::RemoveActors()
 void Act1State::PlaceActors()
 {
 	Isle* isle = (Isle*) FindWorld(*g_isleScript, IsleScript::c__Isle);
+
+	{
+		char site[96];
+#define LOG_PA_SLOT(slot)                                                                                              \
+	std::snprintf(                                                                                                     \
+		site,                                                                                                          \
+		sizeof site,                                                                                                   \
+		"Act1State::PlaceActors:" #slot " roi=0x%08x",                                                                 \
+		isle->slot ? (unsigned) reinterpret_cast<uintptr_t>(isle->slot->GetROI()) : 0u                                 \
+	);                                                                                                                 \
+	roi_uaf_log_access(isle->slot, site)
+		LOG_PA_SLOT(m_motocycle);
+		LOG_PA_SLOT(m_bike);
+		LOG_PA_SLOT(m_skateboard);
+#undef LOG_PA_SLOT
+#define LOG_PA_LOCAL(slot)                                                                                             \
+	std::snprintf(                                                                                                     \
+		site,                                                                                                          \
+		sizeof site,                                                                                                   \
+		"Act1State::PlaceActors:" #slot " roi=0x%08x",                                                                 \
+		slot ? (unsigned) reinterpret_cast<uintptr_t>(slot->GetROI()) : 0u                                             \
+	);                                                                                                                 \
+	roi_uaf_log_access(slot, site)
+		LOG_PA_LOCAL(m_helicopter);
+		LOG_PA_LOCAL(m_jetski);
+		LOG_PA_LOCAL(m_dunebuggy);
+		LOG_PA_LOCAL(m_racecar);
+#undef LOG_PA_LOCAL
+	}
 
 	if (m_motocyclePlane.IsPresent()) {
 		isle->m_motocycle->PlaceActor(m_motocyclePlane);

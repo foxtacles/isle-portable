@@ -1,6 +1,7 @@
 #include "legomain.h"
 
 #include "3dmanager/lego3dmanager.h"
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "extensions/multiplayer.h"
 #include "extensions/siloader.h"
 #include "extensions/thirdpersoncamera.h"
@@ -508,6 +509,7 @@ void LegoOmni::DeleteObject(MxDSAction& p_dsAction)
 					((MxPresenter*) entity)->EndAction();
 				}
 				else {
+					roi_uaf_log_release(entity, entity->ClassName(), "LegoOmni::DeleteObject");
 					delete entity;
 				}
 				return;

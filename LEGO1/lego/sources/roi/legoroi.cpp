@@ -1,6 +1,7 @@
 #include "legoroi.h"
 
 #include "anim/legoanim.h"
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "legolod.h"
 #include "misc/legocontainer.h"
 #include "misc/legostorage.h"
@@ -96,6 +97,7 @@ LegoROI::LegoROI(Tgl::Renderer* p_renderer, ViewLODList* p_lodList) : ViewROI(p_
 // FUNCTION: BETA10 0x10189a42
 LegoROI::~LegoROI()
 {
+	roi_uaf_log_release(this, m_name, "~LegoROI");
 	for (LegoROI** slot : m_slotRefs) {
 		*slot = NULL;
 	}

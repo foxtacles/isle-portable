@@ -1,6 +1,7 @@
 #include "legoworld.h"
 
 #include "anim/legoanim.h"
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "extensions/multiplayer.h"
 #include "extensions/siloader.h"
 #include "extensions/thirdpersoncamera.h"
@@ -181,6 +182,7 @@ void LegoWorld::Destroy(MxBool p_fromDestructor)
 			cursor.Detach();
 
 			if (!(entity->GetFlags() & LegoEntity::c_managerOwned)) {
+				roi_uaf_log_release(entity, entity->ClassName(), "LegoWorld::Destroy");
 				delete entity;
 			}
 		}

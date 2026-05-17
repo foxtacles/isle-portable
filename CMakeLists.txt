@@ -732,6 +732,7 @@ if (ISLE_EXTENSIONS)
     target_sources(lego1 PRIVATE
       extensions/src/multiplayer/platforms/emscripten/callbacks.cpp
       extensions/src/multiplayer/platforms/emscripten/websockettransport.cpp
+      extensions/src/instrumentation/roi_uaf_log.cpp
     )
   elseif(ISLE_USE_LWS)
     target_sources(lego1 PRIVATE
