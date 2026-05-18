@@ -1,5 +1,6 @@
 #include "motorcycle.h"
 
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "isle.h"
 #include "isle_actions.h"
 #include "jukebox_actions.h"
@@ -16,6 +17,7 @@
 #include "mxtransitionmanager.h"
 #include "mxvariabletable.h"
 
+#include <cstdint>
 #include <stdio.h>
 
 DECOMP_SIZE_ASSERT(Motocycle, 0x16c)
@@ -27,6 +29,22 @@ Motocycle::Motocycle()
 	m_linearRotationRatio = 1.75;
 	m_canRotate = 1;
 	m_fuel = 1.0;
+}
+
+// Bug C instrumentation: paired with ~Bike / ~SkateBoard. Confirms whether the
+// motorcycle was destroyed (which would explain m_motocycle->m_roi==NULL via
+// Init() clearing it before free) vs surviving with NULL m_roi from some
+// SetROI(NULL) path.
+Motocycle::~Motocycle()
+{
+	char site[64];
+	std::snprintf(
+		site,
+		sizeof site,
+		"~Motocycle m_roi=0x%08x",
+		(unsigned) reinterpret_cast<uintptr_t>(m_roi)
+	);
+	roi_uaf_log_release(this, "Motocycle", site);
 }
 
 // FUNCTION: LEGO1 0x10035a40

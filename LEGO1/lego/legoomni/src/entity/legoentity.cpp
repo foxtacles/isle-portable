@@ -2,6 +2,7 @@
 
 #include "3dmanager/lego3dmanager.h"
 #include "define.h"
+#include "extensions/instrumentation/roi_uaf_log.h"
 #include "extensions/multiplayer.h"
 #include "legoanimationmanager.h"
 #include "legobuildingmanager.h"
@@ -19,6 +20,7 @@
 #include "mxutilities.h"
 #include "realtime/realtime.h"
 
+#include <cstdint>
 #include <stdio.h>
 
 using namespace Extensions;
@@ -132,6 +134,24 @@ void LegoEntity::SetWorld()
 // FUNCTION: BETA10 0x1007e724
 void LegoEntity::SetROI(LegoROI* p_roi, MxBool p_bool1, MxBool p_updateTransform)
 {
+	// Bug C instrumentation: track SetROI on IslePathActor descendants (Bike,
+	// Motocycle, SkateBoard, Ambulance, TowTrack, Helicopter, Jetski,
+	// DuneBuggy, RaceCar). Captures old/new m_roi and the bool1 flag which
+	// drives c_bit1 (CharacterManager-managed vs direct-delete cleanup path).
+	if (IsA("IslePathActor")) {
+		char site[96];
+		std::snprintf(
+			site,
+			sizeof site,
+			"SetROI cls=%-16s old=0x%08x new=0x%08x b1=%d",
+			ClassName(),
+			(unsigned) reinterpret_cast<uintptr_t>(m_roi),
+			(unsigned) reinterpret_cast<uintptr_t>(p_roi),
+			p_bool1 ? 1 : 0
+		);
+		roi_uaf_log_access(this, site);
+	}
+
 	m_roi = p_roi;
 
 	if (m_roi != NULL) {

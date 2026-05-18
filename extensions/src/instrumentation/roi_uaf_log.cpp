@@ -13,23 +13,34 @@
 
 namespace {
 
-// 256 entries x 128 bytes = 32 KB per ring. Two rings = 64 KB. At thousands of
-// access events per second the ring rolls in <100 ms — plenty of history right
-// before a crash.
-constexpr uint32_t kRingEntries = 256;
-constexpr uint32_t kEntryBytes  = 128;
+// Stack column in the D1 crash_reports table is capped at 65,536 bytes
+// (isle.pizza/server/src/crashes.ts). After the crash stack itself (~1.5 KB)
+// and header/indent overhead, ~63 KB is available for ring content.
+//
+// Worst-case per-line dump size (with kEntryBytes=128 cap, longest current
+// format strings): REL ~86 bytes, ACC ~89 bytes. Sized below so the worst
+// case (every entry maxed) still fits with ~7 KB headroom.
+//
+//   384 REL × 86 = ~33 KB
+//   256 ACC × 89 = ~23 KB
+//   stack + headers ≈ 2 KB
+//   total worst    ≈ 58 KB
+constexpr uint32_t kRelRingEntries = 384;
+constexpr uint32_t kAccRingEntries = 256;
+constexpr uint32_t kEntryBytes     = 128;
 
+template <uint32_t N>
 struct LogRing {
 	std::atomic<uint32_t> head;
-	char entries[kRingEntries][kEntryBytes];
+	char entries[N][kEntryBytes];
 };
 
 static_assert(sizeof(std::atomic<uint32_t>) == 4, "atomic<uint32_t> must be 4 bytes");
 
 // Two separate rings so a flood of access events cannot push out the older
-// release events.
-LogRing g_release_ring;
-LogRing g_access_ring;
+// release events. Sized independently — release events are higher-rate.
+LogRing<kRelRingEntries> g_release_ring;
+LogRing<kAccRingEntries> g_access_ring;
 
 // Monotonic event counter so the JS-side dump can show ordering across rings.
 std::atomic<uint32_t> g_event_clock{1};
@@ -37,9 +48,10 @@ std::atomic<uint32_t> g_event_clock{1};
 // Idempotent install guard.
 std::atomic<bool> g_installed{false};
 
-inline void write_entry(LogRing& ring, const char* text)
+template <uint32_t N>
+inline void write_entry(LogRing<N>& ring, const char* text)
 {
-	const uint32_t i = ring.head.fetch_add(1, std::memory_order_acq_rel) % kRingEntries;
+	const uint32_t i = ring.head.fetch_add(1, std::memory_order_acq_rel) % N;
 	// Zero out then copy so reader never sees a stale tail in this slot.
 	std::memset(ring.entries[i], 0, kEntryBytes);
 	std::strncpy(ring.entries[i], text, kEntryBytes - 1);
@@ -95,10 +107,11 @@ extern "C" void roi_uaf_log_install(void)
 			if (Module.__roiUafLogInstalled) { return; }
 			Module.__roiUafLogInstalled = true;
 
-			var relAddr   = $0;
-			var accAddr   = $1;
-			var nEntries  = $2;
-			var entryLen  = $3;
+			var relAddr     = $0;
+			var accAddr     = $1;
+			var relEntries  = $2;
+			var accEntries  = $3;
+			var entryLen    = $4;
 
 			function readEntry(off, maxLen) {
 				var end = off;
@@ -108,7 +121,7 @@ extern "C" void roi_uaf_log_install(void)
 				return UTF8ToString(off, end - off);
 			}
 
-			function dumpRing(addr, label) {
+			function dumpRing(addr, nEntries, label) {
 				try {
 					// Layout: [u32 head][nEntries x entryLen bytes]
 					var head = HEAPU32[addr >>> 2];
@@ -136,8 +149,8 @@ extern "C" void roi_uaf_log_install(void)
 			Module.onAbort = function(what) {
 				var enriched = (what === undefined || what === null) ? "" : String(what);
 				try {
-					enriched += dumpRing(relAddr, "RELEASE LOG");
-					enriched += dumpRing(accAddr, "ACCESS LOG");
+					enriched += dumpRing(relAddr, relEntries, "RELEASE LOG");
+					enriched += dumpRing(accAddr, accEntries, "ACCESS LOG");
 				} catch (e) {
 					enriched += "\n[roi_uaf_log enricher failed: " + e + "]\n";
 				}
@@ -153,7 +166,8 @@ extern "C" void roi_uaf_log_install(void)
 		},
 		(int) reinterpret_cast<uintptr_t>(&g_release_ring),
 		(int) reinterpret_cast<uintptr_t>(&g_access_ring),
-		(int) kRingEntries,
+		(int) kRelRingEntries,
+		(int) kAccRingEntries,
 		(int) kEntryBytes
 	);
 }
