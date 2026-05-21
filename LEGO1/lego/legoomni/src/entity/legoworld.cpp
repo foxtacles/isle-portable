@@ -29,6 +29,7 @@
 #include "viewmanager/viewmanager.h"
 
 #include <SDL3/SDL_stdinc.h>
+#include <cstdio>
 
 DECOMP_SIZE_ASSERT(LegoWorld, 0xf8)
 DECOMP_SIZE_ASSERT(LegoEntityList, 0x18)
@@ -281,6 +282,22 @@ MxResult LegoWorld::PlaceActor(
 	float p_destScale
 )
 {
+	// Bug C v3 instrumentation: matches the exact crash stack —
+	// Act1State::PlaceActors → LegoWorld::PlaceActor → PathController →
+	// SetTransformAndDestinationFromEdge → orientableroi.cpp:61. Captures
+	// the m_roi value the placement chain enters with.
+	{
+		char site[96];
+		std::snprintf(
+			site,
+			sizeof site,
+			"World::PlaceActor m_roi=0x%08x nm=%-12s",
+			(unsigned) reinterpret_cast<uintptr_t>(p_actor ? p_actor->GetROI() : NULL),
+			p_name ? p_name : "?"
+		);
+		roi_uaf_log_access(p_actor, site);
+	}
+
 	LegoPathControllerListCursor cursor(&m_pathControllerList);
 	LegoPathController* controller;
 

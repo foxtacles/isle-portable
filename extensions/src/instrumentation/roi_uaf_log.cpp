@@ -17,16 +17,21 @@ namespace {
 // (isle.pizza/server/src/crashes.ts). After the crash stack itself (~1.5 KB)
 // and header/indent overhead, ~63 KB is available for ring content.
 //
+// v3 widens the ACC ring from 256 → 384 to match REL. ACC now logs many
+// more sites (Init, Destroy, SetROI, World/PathCtrl::PlaceActor,
+// SetXformDestEdge) so the ~16/256 utilisation seen in v2 #1520 is replaced
+// by realistic 200–300 events/area-transition.
+//
 // Worst-case per-line dump size (with kEntryBytes=128 cap, longest current
-// format strings): REL ~86 bytes, ACC ~89 bytes. Sized below so the worst
-// case (every entry maxed) still fits with ~7 KB headroom.
+// format strings): REL ~86 bytes, ACC ~90 bytes.
 //
 //   384 REL × 86 = ~33 KB
-//   256 ACC × 89 = ~23 KB
+//   384 ACC × 90 = ~34 KB
 //   stack + headers ≈ 2 KB
-//   total worst    ≈ 58 KB
+//   total worst    ≈ 69 KB → over 65 KB cap, but typical entries are 60–75
+//   bytes (not the worst-case 90). Real-world dumps measured at ~50 KB.
 constexpr uint32_t kRelRingEntries = 384;
-constexpr uint32_t kAccRingEntries = 256;
+constexpr uint32_t kAccRingEntries = 384;
 constexpr uint32_t kEntryBytes     = 128;
 
 template <uint32_t N>

@@ -1,5 +1,7 @@
 #include "legopathcontroller.h"
 
+#include "extensions/instrumentation/roi_uaf_log.h"
+#include "legopathactor.h"
 #include "legopathedgecontainer.h"
 #include "misc/legostorage.h"
 #include "mxmisc.h"
@@ -7,6 +9,7 @@
 #include "mxtimer.h"
 
 #include <SDL3/SDL_stdinc.h>
+#include <cstdio>
 
 DECOMP_SIZE_ASSERT(LegoPathController, 0x40)
 DECOMP_SIZE_ASSERT(LegoPathCtrlEdge, 0x40)
@@ -214,6 +217,23 @@ MxResult LegoPathController::PlaceActor(
 	float p_destScale
 )
 {
+	// Bug C v3 instrumentation: directly upstream of the crash chain
+	// (legopathcontroller.cpp:233 → SetTransformAndDestinationFromEdge →
+	// orientableroi.cpp:61). Log m_roi as PathCtrl sees it on entry so we
+	// can distinguish "PlaceActor was called with NULL m_roi" vs "m_roi
+	// freed mid-call".
+	{
+		char site[96];
+		std::snprintf(
+			site,
+			sizeof site,
+			"PathCtrl::PlaceActor m_roi=0x%08x nm=%-12s",
+			(unsigned) reinterpret_cast<uintptr_t>(p_actor->GetROI()),
+			p_name ? p_name : "?"
+		);
+		roi_uaf_log_access(p_actor, site);
+	}
+
 	if (p_actor->GetController() != NULL) {
 		p_actor->GetController()->RemoveActor(p_actor);
 		p_actor->SetController(NULL);
