@@ -234,6 +234,14 @@ MxResult LegoPathController::PlaceActor(
 		roi_uaf_log_access(p_actor, site);
 	}
 
+	// LegoROI is attached asynchronously by LegoModelPresenter::ReadyTickle when the
+	// model's stream chunk arrives. If Isle::Enable → Act1State::PlaceActors runs before
+	// that completes (race lost), m_roi is still NULL — dereferencing it in
+	// SetTransformAndDestinationFromEdge crashes at orientableroi.cpp:61.
+	if (p_actor->GetROI() == NULL) {
+		return FAILURE;
+	}
+
 	if (p_actor->GetController() != NULL) {
 		p_actor->GetController()->RemoveActor(p_actor);
 		p_actor->SetController(NULL);
