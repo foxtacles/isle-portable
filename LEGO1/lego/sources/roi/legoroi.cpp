@@ -104,16 +104,9 @@ LegoROI::~LegoROI()
 	// If `ent` is non-zero on the destroyed ROI of interest, the owning
 	// entity's m_roi is now dangling.
 	char site[40];
-	std::snprintf(
-		site,
-		sizeof site,
-		"~LegoROI ent=0x%08x",
-		(unsigned) reinterpret_cast<uintptr_t>(m_entity)
-	);
+	std::snprintf(site, sizeof site, "~LegoROI ent=0x%08x", (unsigned) reinterpret_cast<uintptr_t>(m_entity));
 	roi_uaf_log_release(this, m_name, site);
-	for (LegoROI** slot : m_slotRefs) {
-		*slot = NULL;
-	}
+	// Slot back-refs are NULLed automatically by ~SlotRefTracker<LegoROI> (base dtor).
 	if (comp) {
 		CompoundObject::iterator iterator;
 
