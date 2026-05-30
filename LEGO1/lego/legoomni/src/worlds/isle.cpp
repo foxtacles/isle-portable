@@ -1620,9 +1620,15 @@ void Act1State::RemoveActors()
 {
 	Isle* isle = (Isle*) FindWorld(*g_isleScript, IsleScript::c__Isle);
 
-	isle->m_motocycle->UpdatePlane(m_motocyclePlane);
-	isle->m_bike->UpdatePlane(m_bikePlane);
-	isle->m_skateboard->UpdatePlane(m_skateboardPlane);
+	if (isle->m_motocycle != NULL) {
+		isle->m_motocycle->UpdatePlane(m_motocyclePlane);
+	}
+	if (isle->m_bike != NULL) {
+		isle->m_bike->UpdatePlane(m_bikePlane);
+	}
+	if (isle->m_skateboard != NULL) {
+		isle->m_skateboard->UpdatePlane(m_skateboardPlane);
+	}
 
 	if (isle->m_helicopter != NULL) {
 		isle->m_helicopter->UpdatePlane(m_helicopterPlane);
@@ -1695,25 +1701,31 @@ void Act1State::PlaceActors()
 #undef LOG_PA_LOCAL
 	}
 
-	if (m_motocyclePlane.IsPresent()) {
-		isle->m_motocycle->PlaceActor(m_motocyclePlane);
-	}
-	else {
-		isle->PlaceActor(isle->m_motocycle, "INT43", 4, 0.5f, 1, 0.5f);
-	}
-
-	if (m_bikePlane.IsPresent()) {
-		isle->m_bike->PlaceActor(m_bikePlane);
-	}
-	else {
-		isle->PlaceActor(isle->m_bike, "INT44", 2, 0.5f, 0, 0.5f);
+	if (isle->m_motocycle != NULL) {
+		if (m_motocyclePlane.IsPresent()) {
+			isle->m_motocycle->PlaceActor(m_motocyclePlane);
+		}
+		else {
+			isle->PlaceActor(isle->m_motocycle, "INT43", 4, 0.5f, 1, 0.5f);
+		}
 	}
 
-	if (m_skateboardPlane.IsPresent()) {
-		isle->m_skateboard->PlaceActor(m_skateboardPlane);
+	if (isle->m_bike != NULL) {
+		if (m_bikePlane.IsPresent()) {
+			isle->m_bike->PlaceActor(m_bikePlane);
+		}
+		else {
+			isle->PlaceActor(isle->m_bike, "INT44", 2, 0.5f, 0, 0.5f);
+		}
 	}
-	else {
-		isle->PlaceActor(isle->m_skateboard, "EDG02_84", 4, 0.5f, 0, 0.5f);
+
+	if (isle->m_skateboard != NULL) {
+		if (m_skateboardPlane.IsPresent()) {
+			isle->m_skateboard->PlaceActor(m_skateboardPlane);
+		}
+		else {
+			isle->PlaceActor(isle->m_skateboard, "EDG02_84", 4, 0.5f, 0, 0.5f);
+		}
 	}
 
 	if (m_helicopter != NULL) {
