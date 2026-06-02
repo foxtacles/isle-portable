@@ -84,6 +84,7 @@ LegoROI::LegoROI(Tgl::Renderer* p_renderer) : ViewROI(p_renderer, NULL)
 	m_parentROI = NULL;
 	m_name = NULL;
 	m_entity = NULL;
+	roi_uaf_track_alive(this);
 }
 
 // FUNCTION: LEGO1 0x100a82d0
@@ -93,6 +94,7 @@ LegoROI::LegoROI(Tgl::Renderer* p_renderer, ViewLODList* p_lodList) : ViewROI(p_
 	m_parentROI = NULL;
 	m_name = NULL;
 	m_entity = NULL;
+	roi_uaf_track_alive(this);
 }
 
 // FUNCTION: LEGO1 0x100a83c0
@@ -106,6 +108,10 @@ LegoROI::~LegoROI()
 	char site[40];
 	std::snprintf(site, sizeof site, "~LegoROI ent=0x%08x", (unsigned) reinterpret_cast<uintptr_t>(m_entity));
 	roi_uaf_log_release(this, m_name, site);
+	// Record death + the slot-ref count for the Bug A residual capture (#1828),
+	// then drop from the live registry. Read here before the ~SlotRefTracker base
+	// dtor runs, so the count reflects the slots about to be NULLed.
+	roi_uaf_track_dead(this, GetSlotRefCount());
 	// Slot back-refs are NULLed automatically by ~SlotRefTracker<LegoROI> (base dtor).
 	if (comp) {
 		CompoundObject::iterator iterator;
@@ -451,6 +457,7 @@ void LegoROI::ApplyAnimationTransformation(LegoTreeNode* p_node, Matrix4& p_matr
 	CreateLocalTransform(data, p_time, mat);
 
 	LegoROI* roi = p_roiMap[data->GetROIIndex()];
+	roi_uaf_anim_slot_check(roi, data->GetROIIndex(), p_roiMap);
 	if (roi != NULL) {
 		roi->m_local2world.Product(mat, p_matrix);
 		roi->UpdateWorldData();
@@ -482,6 +489,7 @@ void LegoROI::ApplyTransform(LegoTreeNode* p_node, Matrix4& p_matrix, LegoTime p
 	CreateLocalTransform(data, p_time, mat);
 
 	LegoROI* roi = p_roiMap[data->GetROIIndex()];
+	roi_uaf_anim_slot_check(roi, data->GetROIIndex(), p_roiMap);
 	if (roi != NULL) {
 		roi->m_local2world.Product(mat, p_matrix);
 

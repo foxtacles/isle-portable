@@ -96,6 +96,10 @@ MxLong IslePathActor::Notify(MxParam& p_param)
 // FUNCTION: BETA10 0x100365ad
 void IslePathActor::Enter()
 {
+	if (m_roi == NULL) {
+		return;
+	}
+
 	m_roi->SetVisibility(FALSE);
 	if (UserActor() != this) {
 		m_previousVel = NavController()->GetMaxLinearVel();

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <unordered_set>
 
 #include <emscripten.h>
 #include <emscripten/em_asm.h>
@@ -89,6 +90,110 @@ extern "C" void roi_uaf_log_access(const void* p_roi, const char* p_site)
 		t,
 		static_cast<uint32_t>(reinterpret_cast<uintptr_t>(p_roi)),
 		p_site ? p_site : "?"
+	);
+	write_entry(g_access_ring, buf);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Bug A residual capture (#1828): a stale (non-NULL, freed) LegoROI in an
+// animation's m_roiMap reaching LegoROI::ApplyAnimationTransformation despite
+// B3's SlotRefTracker nulling. We keep a registry of live ROIs so the anim walk
+// can detect a slot pointing at a freed ROI, and a small ring of recently-dead
+// ROIs recording the slot-ref count each had at death. On a stale hit we emit
+// one ANIM-STALE entry (roi/slot/actor/anim/array + deadSlots) into the existing
+// ACC ring, then let the existing crash dump it. deadSlots distinguishes a
+// never-registered slot (0) from an array/registration mismatch (>0).
+// All LegoROI lifecycle + anim ticks run on the game (worker) thread, so the
+// registry needs no locking; it is never read by the JS dumper.
+// ────────────────────────────────────────────────────────────────────────────
+namespace {
+
+std::unordered_set<const void*> g_alive_rois;
+
+struct DeadRoiInfo {
+	const void* roi;
+	uint32_t slots;
+};
+constexpr uint32_t kDeadRingEntries = 2048;
+DeadRoiInfo g_dead_rois[kDeadRingEntries];
+uint32_t g_dead_head = 0;
+
+// Current animation context, set per LegoAnimActor::AnimateWithTransform and
+// read only when a stale slot is found — never written to a ring, so no flood.
+const void* g_anim_actor   = nullptr;
+int         g_anim_curAnim = -1;
+const void* g_anim_roiMap  = nullptr;
+uint32_t    g_anim_numROIs = 0;
+
+int find_dead_slots(const void* p_roi)
+{
+	for (uint32_t k = 0; k < kDeadRingEntries; k++) {
+		const DeadRoiInfo& d = g_dead_rois[(g_dead_head + kDeadRingEntries - 1 - k) % kDeadRingEntries];
+		if (d.roi == p_roi) {
+			return (int) d.slots;
+		}
+		if (d.roi == nullptr) {
+			break; // ring not yet full; nothing older recorded
+		}
+	}
+	return -1; // died outside the recorded window
+}
+
+} // namespace
+
+extern "C" void roi_uaf_track_alive(const void* p_roi)
+{
+	if (p_roi != nullptr) {
+		g_alive_rois.insert(p_roi);
+	}
+}
+
+extern "C" void roi_uaf_track_dead(const void* p_roi, unsigned p_slotCount)
+{
+	if (p_roi == nullptr) {
+		return;
+	}
+	g_alive_rois.erase(p_roi);
+	g_dead_rois[g_dead_head % kDeadRingEntries].roi   = p_roi;
+	g_dead_rois[g_dead_head % kDeadRingEntries].slots = p_slotCount;
+	g_dead_head++;
+}
+
+extern "C" void roi_uaf_anim_context(const void* p_actor, int p_curAnim, const void* p_roiMap, unsigned p_numROIs)
+{
+	g_anim_actor   = p_actor;
+	g_anim_curAnim = p_curAnim;
+	g_anim_roiMap  = p_roiMap;
+	g_anim_numROIs = p_numROIs;
+}
+
+extern "C" void roi_uaf_anim_slot_check(const void* p_roi, unsigned p_index, const void* p_roiMap)
+{
+	if (p_roi == nullptr || g_alive_rois.count(p_roi) != 0) {
+		return; // NULL is handled by the consumer's guard; live is fine
+	}
+
+	// roi/idx/roiMap/deadSlots are always accurate. actor/curAnim/numROIs come
+	// from the last AnimateWithTransform and are only valid for THIS array
+	// (ctxOk=1); other ApplyAnimationTransformation/ApplyTransform callers
+	// (Act2/Act3/LegoAnimPresenter) don't set context, so they report ctxOk=0.
+	// idx vs numROIs distinguishes a valid stale-entry index (idx<numROIs, the
+	// #1828 case) from a garbage index off a freed anim tree (idx>=numROIs).
+	const int ctxOk = (p_roiMap == g_anim_roiMap) ? 1 : 0;
+	char buf[kEntryBytes];
+	const uint32_t t = g_event_clock.fetch_add(1, std::memory_order_relaxed);
+	std::snprintf(
+		buf, sizeof buf,
+		"ACC t=%u roi=0x%08x ANIM-STALE idx=%u/%u roiMap=0x%08x deadSlots=%d actor=0x%08x curAnim=%d ctxOk=%d",
+		t,
+		static_cast<uint32_t>(reinterpret_cast<uintptr_t>(p_roi)),
+		p_index,
+		ctxOk ? g_anim_numROIs : 0u,
+		static_cast<uint32_t>(reinterpret_cast<uintptr_t>(p_roiMap)),
+		find_dead_slots(p_roi),
+		static_cast<uint32_t>(reinterpret_cast<uintptr_t>(ctxOk ? g_anim_actor : nullptr)),
+		ctxOk ? g_anim_curAnim : -1,
+		ctxOk
 	);
 	write_entry(g_access_ring, buf);
 }

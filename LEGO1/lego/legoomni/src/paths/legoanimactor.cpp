@@ -8,6 +8,8 @@
 #include "misc.h"
 #include "mxutilities.h"
 
+#include "extensions/instrumentation/roi_uaf_log.h"
+
 DECOMP_SIZE_ASSERT(LegoAnimActor, 0x174)
 DECOMP_SIZE_ASSERT(LegoAnimActorStruct, 0x20)
 
@@ -163,6 +165,7 @@ MxResult LegoAnimActor::AnimateWithTransform(float p_time, Matrix4& p_transform)
 				}
 			}
 
+			roi_uaf_anim_context(m_roi, m_curAnim, roiMap, numROIs);
 			for (MxS32 j = 0; j < n->GetNumChildren(); j++) {
 				LegoROI::ApplyAnimationTransformation(n->GetChild(j), p_transform, p_time, roiMap);
 			}
