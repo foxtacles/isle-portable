@@ -1523,9 +1523,24 @@ void IsleApp::DisplayArgumentHelp(const char* p_execName)
 }
 
 #ifndef __EMSCRIPTEN__
+struct SearchPathListing {
+	MxString entries;
+	int count;
+};
+
 static SDL_EnumerationResult SDLCALL CollectSearchPathEntry(void* p_userdata, const char*, const char* p_fname)
 {
-	static_cast<vector<MxString>*>(p_userdata)->emplace_back(p_fname);
+	SearchPathListing* listing = static_cast<SearchPathListing*>(p_userdata);
+
+	if (listing->count < 12) {
+		listing->entries += listing->count == 0 ? ": " : ", ";
+		listing->entries += p_fname;
+	}
+	else if (listing->count == 12) {
+		listing->entries += ", ...";
+	}
+
+	listing->count++;
 	return SDL_ENUM_CONTINUE;
 }
 
@@ -1541,28 +1556,20 @@ static MxString DescribeSearchPath(const char* p_base, const vector<MxString>& p
 	MxString description("\n");
 	description += p_base;
 
-	vector<MxString> entries;
-	if (!SDL_EnumerateDirectory(p_base, CollectSearchPathEntry, &entries)) {
+	SearchPathListing listing;
+	listing.count = 0;
+
+	if (!SDL_EnumerateDirectory(p_base, CollectSearchPathEntry, &listing)) {
 		description += " cannot be listed (";
 		description += SDL_GetError();
 		description += ")";
 		return description;
 	}
 
+	description += listing.entries.GetData();
+
 	char counts[64];
-	SDL_snprintf(counts, sizeof(counts), " contains %d entries", (int) entries.size());
-	description += counts;
-
-	for (size_t i = 0; i < entries.size() && i < 12; i++) {
-		description += i == 0 ? ": " : ", ";
-		description += entries[i].GetData();
-	}
-
-	if (entries.size() > 12) {
-		description += ", ...";
-	}
-
-	SDL_snprintf(counts, sizeof(counts), ", %d indexed game files", (int) p_index.size());
+	SDL_snprintf(counts, sizeof(counts), " (%d entries, %d indexed game files)", listing.count, (int) p_index.size());
 	description += counts;
 
 	return description;
