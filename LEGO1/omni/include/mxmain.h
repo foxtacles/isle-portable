@@ -44,8 +44,8 @@ public:
 	LEGO1_EXPORT static void SetCD(const char* p_cd);
 	LEGO1_EXPORT static void SetHD(const char* p_hd);
 	LEGO1_EXPORT static void SetSound3D(MxBool p_use3dSound);
-	static vector<MxString>& GetHDFiles() { return g_hdFiles; }
-	static vector<MxString>& GetCDFiles() { return g_cdFiles; }
+	LEGO1_EXPORT static vector<MxString>& GetHDFiles();
+	LEGO1_EXPORT static vector<MxString>& GetCDFiles();
 
 	MxOmni();
 	~MxOmni() override;

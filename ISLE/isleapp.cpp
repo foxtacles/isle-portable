@@ -1522,18 +1522,71 @@ void IsleApp::DisplayArgumentHelp(const char* p_execName)
 	SDL_Log("	--help			Show this help message");
 }
 
+#ifndef __EMSCRIPTEN__
+static SDL_EnumerationResult SDLCALL CollectSearchPathEntry(void* p_userdata, const char*, const char* p_fname)
+{
+	static_cast<vector<MxString>*>(p_userdata)->emplace_back(p_fname);
+	return SDL_ENUM_CONTINUE;
+}
+
+// Summarize what the game actually sees in a search path. When the startup check fails, this tells apart
+// game files that never arrived, a directory the game is not allowed to read, and files that are present
+// but did not make it into the case mapping index.
+static MxString DescribeSearchPath(const char* p_base, const vector<MxString>& p_index)
+{
+	if (!p_base || !*p_base) {
+		return MxString();
+	}
+
+	MxString description("\n");
+	description += p_base;
+
+	vector<MxString> entries;
+	if (!SDL_EnumerateDirectory(p_base, CollectSearchPathEntry, &entries)) {
+		description += " cannot be listed (";
+		description += SDL_GetError();
+		description += ")";
+		return description;
+	}
+
+	char counts[64];
+	SDL_snprintf(counts, sizeof(counts), " contains %d entries", (int) entries.size());
+	description += counts;
+
+	for (size_t i = 0; i < entries.size() && i < 12; i++) {
+		description += i == 0 ? ": " : ", ";
+		description += entries[i].GetData();
+	}
+
+	if (entries.size() > 12) {
+		description += ", ...";
+	}
+
+	SDL_snprintf(counts, sizeof(counts), ", %d indexed game files", (int) p_index.size());
+	description += counts;
+
+	return description;
+}
+#endif
+
 MxResult IsleApp::VerifyFilesystem()
 {
 #ifdef __EMSCRIPTEN__
 	Emscripten_SetupFilesystem();
 #else
+	const char* searchPaths[] = {".", m_hdPath, m_cdPath};
+
 	for (const char* file : g_files) {
-		const char* searchPaths[] = {".", m_hdPath, m_cdPath};
 		bool found = false;
 		MxString attempts;
 
-		for (const char* base : searchPaths) {
-			MxString path(base);
+		for (size_t i = 0; i < SDL_arraysize(searchPaths); i++) {
+			// diskpath and cdpath are the same directory on some platforms; report each of them once
+			if (i > 0 && SDL_strcmp(searchPaths[i], searchPaths[i - 1]) == 0) {
+				continue;
+			}
+
+			MxString path(searchPaths[i]);
 			path += file;
 			path.MapPathToFilesystem();
 
@@ -1550,14 +1603,20 @@ MxResult IsleApp::VerifyFilesystem()
 		}
 
 		if (!found) {
-			char buffer[1024];
+			MxString listings = DescribeSearchPath(m_hdPath, MxOmni::GetHDFiles());
+			if (!m_hdPath || !m_cdPath || SDL_strcmp(m_hdPath, m_cdPath) != 0) {
+				listings += DescribeSearchPath(m_cdPath, MxOmni::GetCDFiles()).GetData();
+			}
+
+			char buffer[2048];
 			SDL_snprintf(
 				buffer,
 				sizeof(buffer),
 				"\"LEGO® Island\" failed to start.\nPlease make sure the file %s is located in either diskpath or "
-				"cdpath.%s",
+				"cdpath.%s\n%s",
 				file,
-				attempts.GetData()
+				attempts.GetData(),
+				listings.GetData()
 			);
 
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", buffer);

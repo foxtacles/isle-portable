@@ -440,6 +440,16 @@ void MxOmni::Resume()
 	}
 }
 
+vector<MxString>& MxOmni::GetHDFiles()
+{
+	return g_hdFiles;
+}
+
+vector<MxString>& MxOmni::GetCDFiles()
+{
+	return g_cdFiles;
+}
+
 static SDL_EnumerationResult SDLCALL CollectDirectoryEntries(void* p_userdata, const char*, const char* p_fname)
 {
 	static_cast<vector<MxString>*>(p_userdata)->emplace_back(p_fname);
